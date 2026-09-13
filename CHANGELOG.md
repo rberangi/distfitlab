@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 — 2026-09-14
+
+- **Fit All**: **AIC** and **BIC** columns in both apps, from the log-likelihood of each fit with
+  free parameters counted (a held loc = 0 is not). The status line names the lowest-AIC
+  distribution when it differs from the best by fitting error. Fits whose data falls outside
+  the distribution's support show a dash. Saved CSVs include both columns.
+- **Data view**: the Visualize buttons wrap onto a second line in narrow notebooks instead of
+  being cut off on the right.
+
 ## 0.2.0 — 2026-09-13
 
 - First release on PyPI: `pip install distfitlab`.

@@ -85,7 +85,7 @@ A ready notebook is in [`examples/quickstart.ipynb`](https://github.com/rberangi
 ## What you get
 
 - **Fit All** fits every distribution and ranks them best-first by the largest gap
-  between the empirical and theoretical CDF, with the parameters for each.
+  between the empirical and theoretical CDF, with the parameters and AIC/BIC for each.
 - **Fit** scores one distribution against parameters you type, with CDF/PDF overlays.
 - **Data view** — histogram (or counts bar chart), ECDF, box plot, Q-Q plot against the
   distribution you chose, run chart and sorted run chart with a pan/zoom toolbar, and

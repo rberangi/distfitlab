@@ -27,6 +27,8 @@ Fit every supported distribution to the current data.
 
 See a parameter table (with Parameter 1 = loc where applicable) and Fitting Error (max CDF deviation).
 
+The table also has **AIC** and **BIC** columns. Both start from the log-likelihood of the data under the fitted distribution and add a penalty for each free parameter (AIC = 2k − 2 ln L, BIC = k ln n − 2 ln L), so a flexible distribution only scores better if it earns its extra parameters. BIC penalises parameters more strongly than AIC. Lower is better; the absolute values mean nothing, only differences within one table, and a gap under about 2 is too small to prefer one distribution over the other. A held loc = 0 is not counted as a parameter. A dash means some data falls outside that distribution's support, so its likelihood is zero. The table stays ranked by Fitting Error; when a different distribution has the lowest AIC, the status line names it.
+
 View CDF/PDF overlays for the best fit.
 
 Inspect a bar chart of errors (labels printed vertically).

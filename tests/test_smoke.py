@@ -34,6 +34,39 @@ def test_continuous_loc_can_be_held_at_zero():
     assert res["table"]["Parameter 1"].str.endswith("= 0 (fixed)").all()
 
 
+def test_continuous_aic_bic_match_a_hand_calculation():
+    import scipy.stats as st
+    x = np.random.default_rng(5).normal(5, 2, 800)
+    res = ch.fit_subset_and_summarize(x, bins=100)
+    ll = st.norm.logpdf(x, *st.norm.fit(x)).sum()
+    assert np.isclose(res["aic"]["Normal"], 2 * 2 - 2 * ll)
+    assert np.isclose(res["bic"]["Normal"], 2 * np.log(len(x)) - 2 * ll)
+    row = res["table"].set_index("Distribution").loc["Normal"]
+    assert float(row["AIC"]) == pytest.approx(res["aic"]["Normal"], abs=0.05)
+    assert res["best_aic_name"] in {"Normal", "Student-T"}      # T nests Normal as df grows
+
+
+def test_continuous_aic_does_not_count_a_fixed_loc():
+    import scipy.stats as st
+    x = 2.0 * np.random.default_rng(6).weibull(1.8, 1000)
+    res = ch.fit_subset_and_summarize(x, bins=100, subset=("Weibull",), fix_loc=True)
+    p = st.weibull_min.fit(x, floc=0.0)
+    ll = st.weibull_min.logpdf(x, *p).sum()
+    assert np.isclose(res["aic"]["Weibull"], 2 * 2 - 2 * ll)     # shape + scale only
+
+
+def test_discrete_aic_bic_and_out_of_support_dash():
+    import scipy.stats as st
+    counts = np.random.default_rng(7).poisson(3, 1500)            # has zeros
+    res = dh.fit_all_discrete(counts)
+    ll = st.poisson.logpmf(counts, counts.mean()).sum()
+    assert np.isclose(res["aic"]["Poisson"], 2 * 1 - 2 * ll)
+    assert np.isclose(res["bic"]["Poisson"], np.log(len(counts)) - 2 * ll)
+    table = res["table"].set_index("Distribution")
+    assert table.loc["Geometric", "AIC"] == "—"                 # Geometric support starts at 1
+    assert res["best_aic_name"] in {"Poisson", "Negative Binomial", "Zero-Inflated Poisson"}
+
+
 def test_theory_ppf_inverts_theory_cdf():
     q = np.array([0.05, 0.25, 0.5, 0.75, 0.95])
     for name, pars in [("Normal", [0.0, 1.0]), ("Gamma", [2.0, 0.0, 1.5]),

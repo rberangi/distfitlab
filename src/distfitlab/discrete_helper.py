@@ -62,6 +62,49 @@ def theory_pmf(dist, pars, k):
     else:
         raise ValueError("Unknown distribution.")
 
+def theory_logpmf(dist, pars, k):
+    """log PMF, computed in log space so far-tail counts don't underflow to log(0)."""
+    k = np.asarray(k, dtype=int)
+    if dist == "Poisson":
+        lam, = pars
+        return st.poisson.logpmf(k, mu=lam)
+    elif dist == "Binomial":
+        n, p = pars
+        return st.binom.logpmf(k, n=int(round(n)), p=p)
+    elif dist == "Geometric":
+        p, = pars
+        return st.geom.logpmf(k, p=p)
+    elif dist == "Negative Binomial":
+        r, p = pars
+        return st.nbinom.logpmf(k, n=r, p=p)
+    elif dist == "Zero-Inflated Poisson":
+        pi, lam = pars
+        with np.errstate(divide="ignore"):
+            return np.where(k == 0, np.log(pi + (1.0 - pi) * np.exp(-lam)),
+                            np.log1p(-pi) + st.poisson.logpmf(k, mu=lam))
+    else:
+        raise ValueError("Unknown distribution.")
+
+def information_criteria(loglik, n):
+    """{name: (log-likelihood, k)} -> ({name: AIC}, {name: BIC}).
+
+    AIC = 2k - 2 lnL, BIC = k ln(n) - 2 lnL. A fit whose likelihood is not finite - a count
+    outside the distribution's support, e.g. a zero under Geometric - gets NaN.
+    """
+    aic, bic = {}, {}
+    for name, (ll, k) in loglik.items():
+        ok = np.isfinite(ll)
+        aic[name] = 2 * k - 2 * ll if ok else np.nan
+        bic[name] = k * np.log(n) - 2 * ll if ok else np.nan
+    return aic, bic
+
+def _fmt_ic(v):
+    return f"{v:.1f}" if np.isfinite(v) else "—"
+
+def _lowest(scores):
+    finite = {k: v for k, v in scores.items() if np.isfinite(v)}
+    return min(finite, key=finite.get) if finite else None
+
 def theory_cdf(dist, pars, k):
     k = np.asarray(k, dtype=int)
     if dist == "Poisson":
@@ -242,6 +285,8 @@ def fit_all_discrete(x, subset=ALL_DISTS):
     F_emp_sup = np.interp(k_sup, k_emp, F_emp, left=0.0, right=1.0)
     fitted = {}
     errors = {}
+    loglik = {}     # d -> (log-likelihood, number of parameters), for AIC/BIC
+    xi = np.rint(np.asarray(x, dtype=float)).astype(int)
     for d in subset:
         if d == "Poisson":
             pars = fit_poisson(x)
@@ -259,6 +304,9 @@ def fit_all_discrete(x, subset=ALL_DISTS):
         err = float(np.max(np.abs(F_th - F_emp_sup)))
         fitted[d] = pars
         errors[d] = err
+        with np.errstate(all="ignore"):
+            loglik[d] = (float(np.sum(theory_logpmf(d, pars, xi))), len(pars))
+    aic, bic = information_criteria(loglik, len(xi))
     # table
     rows = []
     for d in subset:
@@ -277,7 +325,8 @@ def fit_all_discrete(x, subset=ALL_DISTS):
             ptxt = f"π = {pars[0]:.6f}, λ = {pars[1]:.6f}"
         else:
             ptxt = str(pars)
-        rows.append({"Distribution": d, "Fitted parameters": ptxt, "Max CDF error": f"{errors[d]:.3f}"})
+        rows.append({"Distribution": d, "Fitted parameters": ptxt,
+                     "AIC": _fmt_ic(aic[d]), "BIC": _fmt_ic(bic[d]), "Max CDF error": f"{errors[d]:.3f}"})
     # Best fit first: order the table, the error chart and the saved CSV by ascending error (NaN last)
     errors = dict(sorted(errors.items(), key=lambda kv: (np.isnan(kv[1]), kv[1])))
     rank = {d: i for i, d in enumerate(errors)}
@@ -287,7 +336,8 @@ def fit_all_discrete(x, subset=ALL_DISTS):
     return {
         "k_emp": k_emp, "pmf_emp": pmf_emp, "F_emp": F_emp,
         "k_sup": k_sup, "fitted": fitted, "errors": errors,
-        "table": df, "best_name": best_name, "best_error": float(errors[best_name])
+        "table": df, "best_name": best_name, "best_error": float(errors[best_name]),
+        "aic": aic, "bic": bic, "best_aic_name": _lowest(aic)
     }
 
 # ---------------- Widgets: controls ----------------
@@ -678,6 +728,12 @@ def _run_fit_by_group():
     status_html.value = (f"<span>Done. Fitted <b>{len(rows)}</b> groups of '{gcol}'. "
                          f"Pick one in <b>Group</b> to see its charts.</span>{skip_note}")
 
+_IC_NOTE = ("<div style='color:#555; margin: 0 0 6px 0;'>Ranked by Max CDF error. AIC and BIC score the "
+            "likelihood with a penalty for extra parameters; lower is better. Only differences "
+            "within this table matter, and a gap under about 2 is too small to prefer one over the other. "
+            "A dash means some counts fall outside that distribution's "
+            "support.</div>")
+
 def _run_fit_all(_=None):
     results_tabs.selected_index = 0
     status_html.value = ""
@@ -705,7 +761,7 @@ def _run_fit_all(_=None):
         .res-table th:last-child, .res-table td:last-child { text-align:center; }
         </style>
         """
-        display(HTML("<h4>Fitted Parameters (Discrete)</h4>" + _data_context() + html_style +
+        display(HTML("<h4>Fitted Parameters (Discrete)</h4>" + _data_context() + _IC_NOTE + html_style +
                      res["table"].to_html(index=False, classes="res-table", escape=False)))
 
         # Error bars with vertical names
@@ -750,7 +806,9 @@ def _run_fit_all(_=None):
                       "samples": pd.DataFrame({"counts": np.rint(np.asarray(x)).astype(int)})})
 
     save_btn.disabled = False
-    status_html.value = f"<span>Done. Best fit: <b>{res['best_name']}</b> (error = {res['best_error']:.3f}).</span>"
+    aic_note = (f" Lowest AIC: <b>{res['best_aic_name']}</b>."
+                if res["best_aic_name"] and res["best_aic_name"] != res["best_name"] else "")
+    status_html.value = f"<span>Done. Best fit: <b>{res['best_name']}</b> (error = {res['best_error']:.3f}).{aic_note}</span>"
 
 fit_all_btn.on_click(_run_fit_all)
 
@@ -1142,7 +1200,8 @@ _tab_css = widgets.HTML("<style>"
     "</style>")
 viz_row = widgets.HBox([widgets.HTML("<b style='white-space:nowrap'>Visualize:</b>",
                                      layout=widgets.Layout(width="72px")),
-                        viz_bar, viz_ecdf, viz_box, viz_run, viz_srun, viz_stats, viz_split, viz_grid])
+                        viz_bar, viz_ecdf, viz_box, viz_run, viz_srun, viz_stats, viz_split, viz_grid],
+                       layout=widgets.Layout(flex_flow="row wrap"))   # wrap, or narrow notebooks clip the end
 
 results_tabs = widgets.Tab(children=[out, widgets.VBox([find_status, find_out]),
                                      widgets.VBox([viz_status, viz_out])])

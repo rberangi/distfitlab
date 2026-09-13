@@ -228,6 +228,26 @@ ALL_DISTS = ("Normal","Exponential","Gamma","Rayleigh","Weibull",
              "Lognormal","Loglogistic","Inverse Gaussian","Beta","GEV","Logistic","Laplace",
              "Chi-squared","Chi","Nakagami","Rician","Cauchy","Student-T")
 
+def information_criteria(loglik, n):
+    """{name: (log-likelihood, k)} -> ({name: AIC}, {name: BIC}).
+
+    AIC = 2k - 2 lnL, BIC = k ln(n) - 2 lnL. A fit whose likelihood is not finite - data
+    outside the distribution's support - gets NaN, which the table shows as a dash.
+    """
+    aic, bic = {}, {}
+    for name, (ll, k) in loglik.items():
+        ok = np.isfinite(ll)
+        aic[name] = 2 * k - 2 * ll if ok else np.nan
+        bic[name] = k * np.log(n) - 2 * ll if ok else np.nan
+    return aic, bic
+
+def _fmt_ic(v):
+    return f"{v:.1f}" if np.isfinite(v) else "—"
+
+def _lowest(scores):
+    finite = {k: v for k, v in scores.items() if np.isfinite(v)}
+    return min(finite, key=finite.get) if finite else None
+
 def fit_subset_and_summarize(r, bins=100, subset=ALL_DISTS, fix_loc=False):
     """Fit requested subset; compute max-CDF error; build display table."""
     r = np.asarray(r, dtype=float); subset = list(subset)
@@ -236,6 +256,7 @@ def fit_subset_and_summarize(r, bins=100, subset=ALL_DISTS, fix_loc=False):
     # loc = 0 for a positive-support distribution, is skipped and reported instead of aborting Fit All.
     kw = {"floc": 0.0} if fix_loc else {}
     skipped = []
+    loglik = {}     # name -> (log-likelihood, number of free parameters), for AIC/BIC
     def _fit(name, dist):
         if name not in subset: return None
         try:
@@ -244,6 +265,8 @@ def fit_subset_and_summarize(r, bins=100, subset=ALL_DISTS, fix_loc=False):
             p = None
         if p is None or not np.all(np.isfinite(p)):
             skipped.append(name); return None
+        with np.errstate(all="ignore"):
+            loglik[name] = (float(np.sum(dist.logpdf(r, *p))), len(p) - (1 if fix_loc else 0))
         return p
     if (p := _fit("Normal", st.norm)) is not None: A["Normal"] = [p[0], p[1]]
     if (p := _fit("Exponential", st.expon)) is not None: A["Exponential"] = [p[0], 1.0 / p[1]]
@@ -282,8 +305,11 @@ def fit_subset_and_summarize(r, bins=100, subset=ALL_DISTS, fix_loc=False):
     errors = np.array(errors); imin = int(np.nanargmin(errors))
     best_name, best_error = test_dist[imin], float(errors[imin])
 
+    aic, bic = information_criteria(loglik, len(r))
     rows = []
-    def add_row(name, p1, p2="", p3=""): rows.append({"Distribution":name, "Parameter 1":p1, "Parameter 2":p2, "Parameter 3":p3, "Fitting Error":f"{errors[test_dist.index(name)]:.3f}"})
+    def add_row(name, p1, p2="", p3=""): rows.append({"Distribution":name, "Parameter 1":p1, "Parameter 2":p2, "Parameter 3":p3,
+                                                      "AIC":_fmt_ic(aic[name]), "BIC":_fmt_ic(bic[name]),
+                                                      "Fitting Error":f"{errors[test_dist.index(name)]:.3f}"})
 
     if "Normal" in A:      add_row("Normal",      f"loc (μ) = {A['Normal'][0]:.6f}",          f"σ = {A['Normal'][1]:.6f}")
     if "Exponential" in A: add_row("Exponential", f"loc = {A['Exponential'][0]:.6f}",        f"λ = {A['Exponential'][1]:.6f}")
@@ -315,7 +341,8 @@ def fit_subset_and_summarize(r, bins=100, subset=ALL_DISTS, fix_loc=False):
         df["Parameter 1"] = df["Parameter 1"].str.replace(r"= -?0\.0+$", "= 0 (fixed)", regex=True)
     return {"params": A, "rangex": rangex, "emp_cdf": emp_cdf,
             "errors": errors, "table": df, "best_name": best_name,
-            "best_error": best_error, "test_dist": test_dist, "skipped": skipped}
+            "best_error": best_error, "test_dist": test_dist, "skipped": skipped,
+            "aic": aic, "bic": bic, "best_aic_name": _lowest(aic)}
 
 # ---------------- Widgets & UI ----------------
 # Global controls
@@ -1025,6 +1052,12 @@ def _prepare_data():
     return r, bins
 
 # ---------- Fit all ----------
+_IC_NOTE = ("<div style='color:#555; margin: 0 0 6px 0;'>Ranked by Fitting Error (largest gap between the "
+            "empirical and fitted CDF). AIC and BIC score the likelihood with a penalty for extra "
+            "parameters; lower is better. Only differences within this table matter, and a gap under about 2 "
+            "is too small to prefer one over the other. "
+            "A dash means the data falls outside that distribution's support.</div>")
+
 def _run_fit_by_group():
     """Fit every group of the group-by column and compare their best fits in one table."""
     bins, col, gcol = int(bins_int.value), col_dd.value, group_col.value
@@ -1126,7 +1159,7 @@ def _run_fit_for_all(_=None):
         </style>
         """
         html_table = result["table"].to_html(index=False, classes="fitted-params", escape=False)
-        display(HTML("<h4>Fitted Parameters</h4>" + _data_context() + html_style + html_table))
+        display(HTML("<h4>Fitted Parameters</h4>" + _data_context() + _IC_NOTE + html_style + html_table))
         # Figure 1: errors bar with vertical process names above bars
         names = result["test_dist"]; errs = np.asarray(result["errors"], float); x = np.arange(len(names))
         fig_width = max(8.0, 0.5 * len(names))
@@ -1172,8 +1205,10 @@ def _run_fit_for_all(_=None):
     loc_note = " with loc fixed at 0" if loc_mode.value else ""
     skip_note = (f" <span style='color:#b45309'>Could not fit{loc_note}: {', '.join(result['skipped'])}.</span>"
                  if result["skipped"] else "")
+    aic_note = (f" Lowest AIC: <b>{result['best_aic_name']}</b>."
+                if result["best_aic_name"] and result["best_aic_name"] != result["best_name"] else "")
     status_html.value = (f"<span>Done{loc_note}. Best among {sel}: <b>{result['best_name']}</b> "
-                         f"(error = {result['best_error']:.3f}).</span>{skip_note}")
+                         f"(error = {result['best_error']:.3f}).{aic_note}</span>{skip_note}")
 
 fit_all_btn.on_click(_run_fit_for_all)
 
@@ -1501,7 +1536,8 @@ _tab_css = widgets.HTML("<style>"
     ".jupyter-widget-TabPanel-tabBar .p-TabBar-tabLabel, .widget-tab-bar .p-TabBar-tabLabel"
     " { overflow: visible !important; text-overflow: clip !important; }"
     "</style>")
-viz_row = widgets.HBox([bins_int, viz_hist, viz_ecdf, viz_box, viz_qq, viz_run, viz_srun, viz_stats, viz_split, viz_grid])
+viz_row = widgets.HBox([bins_int, viz_hist, viz_ecdf, viz_box, viz_qq, viz_run, viz_srun, viz_stats, viz_split, viz_grid],
+                       layout=widgets.Layout(flex_flow="row wrap"))   # wrap, or narrow notebooks clip the end
 
 results_tabs = widgets.Tab(children=[out, widgets.VBox([find_status, find_out]),
                                      widgets.VBox([viz_status, viz_out])])

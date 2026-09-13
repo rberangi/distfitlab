@@ -5,11 +5,11 @@
 - First release on PyPI: `pip install distfitlab`.
 - **Data view**: new **Sorted run chart** — values in ascending order against rank, with
   mean and median lines and the same pan/zoom toolbar as the run chart.
-- **grid lines** option for both run charts, applied live to the chart on screen.
-- Run charts are narrower (7 in, was 9 in), since they can be zoomed.
+- **Data view**: **Grid lines** option for both run charts, applied live to the chart on screen.
+- **Data view**: run charts are narrower (7 in, was 9 in), since they can be zoomed.
 - README: "After installing" walkthrough and troubleshooting; links now work on the PyPI page.
 
-## 0.1.0 — first public release
+## 0.1.0 — 2026-09-13 (GitHub only)
 
 - Two fitting apps behind one switch: 18 continuous distributions and 5 count distributions.
 - **Fit All** ranks every distribution by max |empirical CDF − theoretical CDF|, best first.

@@ -41,7 +41,7 @@ Display CDF and PDF overlays for those parameters.
 
 4) Visualize data  (on-screen block: VISUALIZE DATA, results in the Data view tab)
 
-The **Visualize** buttons draw the data you are about to fit - after filters, cleaning and group selection - into the **Data view** tab. **Q-Q plot** uses the distribution and parameters currently in the Fit row, so it answers "do my parameters match this data?" before you fit. **Run chart** plots values in row order, which shows drift or steps that a histogram hides. With a **Group by** column set, tick **split by group** to draw one series per group (up to 10).
+The **Visualize** buttons draw the data you are about to fit - after filters, cleaning and group selection - into the **Data view** tab. **Q-Q plot** uses the distribution and parameters currently in the Fit row, so it answers "do my parameters match this data?" before you fit. **Run chart** plots values in row order, which shows drift or steps that a histogram hides. **Sorted run chart** plots the same values in ascending order against their rank, with mean and median lines, so the range, gaps, ties and outliers stand out; like the run chart it has a pan/zoom toolbar. Tick **grid lines** to add a light grid to both run charts; it applies to a chart already on screen, keeping the current zoom. With a **Group by** column set, tick **split by group** to draw one series per group (up to 10).
 
 5) Save results
 

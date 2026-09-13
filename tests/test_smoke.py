@@ -72,6 +72,34 @@ def test_reader_round_trips(suffix):
     assert len(out) == 100
 
 
+@pytest.mark.parametrize("helper", [ch, dh])
+def test_sorted_run_chart_plots_values_in_order(helper, monkeypatch):
+    shown = []
+    monkeypatch.setattr(helper, "_emit", lambda fig, live=False: shown.append(fig))
+    helper.mode_dd.value = "sim"
+    helper._viz_run(sort=True)
+    y = shown[0].axes[0].lines[0].get_ydata()
+    assert len(y) > 1 and (np.diff(y) >= 0).all()
+
+
+@pytest.mark.parametrize("helper", [ch, dh])
+def test_run_chart_grid_toggles_in_place(helper, monkeypatch):
+    import matplotlib.pyplot as plt
+    shown = []
+    monkeypatch.setattr(helper, "_emit", lambda fig, live=False: shown.append(fig))
+    helper.mode_dd.value = "sim"
+    helper.viz_grid.value = False
+    helper._viz_run()
+    ax = shown[0].axes[0]
+    gridlines = lambda: any(g.get_visible() for g in ax.get_xgridlines() + ax.get_ygridlines())
+    assert not gridlines()
+    helper.viz_grid.value = True                     # the already-drawn chart picks it up
+    assert gridlines()
+    helper.viz_grid.value = False
+    assert not gridlines()
+    plt.close("all")
+
+
 def test_filter_stack_and_cleaning():
     rng = np.random.default_rng(4)
     df = pd.DataFrame({"machine": rng.choice(["A", "B"], 400),

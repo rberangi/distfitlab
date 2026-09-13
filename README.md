@@ -15,14 +15,17 @@ Two apps behind one switch:
 ## Install
 
 ```bash
-pip install git+https://github.com/rberangi/distfitlab.git
+pip install distfitlab
 ```
 
-Optional readers and the interactive run chart are extras:
+Optional readers and the interactive run charts are extras:
 
 ```bash
-pip install "distfitlab[all] @ git+https://github.com/rberangi/distfitlab.git"
+pip install "distfitlab[all]"
 ```
+
+For the latest development version, install from GitHub instead:
+`pip install "distfitlab[all] @ git+https://github.com/rberangi/distfitlab.git"`.
 
 | Extra | Adds |
 |---|---|
@@ -30,10 +33,25 @@ pip install "distfitlab[all] @ git+https://github.com/rberangi/distfitlab.git"
 | `parquet` | `.parquet`, `.feather`, `.arrow` |
 | `spss` | `.sav`, `.dta`, `.sas7bdat`, `.xpt` |
 | `hdf5` | `.h5`, `.hdf5` |
-| `zoom` | pan/zoom toolbar on the run chart |
+| `zoom` | pan/zoom toolbar on the run charts |
 | `all` | all of the above |
 
-## Quick start
+## After installing
+
+distfitlab is a widget app, so it runs inside a notebook — not in a plain Python script
+or terminal.
+
+**1. Open a notebook** in the same Python environment you installed into:
+
+```bash
+pip install jupyterlab      # skip if you already have Jupyter
+jupyter lab
+```
+
+VS Code works too: create a `.ipynb` file and select that Python as the kernel.
+Notebook 7 is also fine — anywhere `ipywidgets` renders.
+
+**2. Start the app** in a notebook cell:
 
 ```python
 from distfitlab import main
@@ -42,8 +60,27 @@ main()                # opens on the continuous app
 # main("Discrete")    # opens on the discrete app
 ```
 
-Run it in JupyterLab, Notebook 7 or VS Code — anywhere `ipywidgets` renders. A ready
-notebook is in [`examples/quickstart.ipynb`](examples/quickstart.ipynb).
+**3. Use the UI** that appears below the cell:
+
+1. **Data source** — simulate data, or choose **From file** to upload a file (or enter a
+   path) and pick the column.
+2. **Fit All** — fit every distribution and get a table ranked best-first.
+3. **Fit** — try one distribution with parameters you type.
+4. **Visualize data** — histogram, ECDF, box plot, Q-Q plot, run charts and summary stats.
+5. **Save results** — write the table and figures to an `outputs/` folder next to the
+   notebook.
+
+A ready notebook is in [`examples/quickstart.ipynb`](https://github.com/rberangi/distfitlab/blob/main/examples/quickstart.ipynb)
+(in the repository; a pip install does not include it), and every control is explained in
+[`docs/guide.md`](https://github.com/rberangi/distfitlab/blob/main/docs/guide.md).
+
+### If something doesn't work
+
+| Symptom | Fix |
+|---|---|
+| `ModuleNotFoundError: No module named 'distfitlab'` | The notebook kernel is a different Python from the one pip installed into. Run `%pip install "distfitlab[all]"` in a cell, then restart the kernel. |
+| Text such as `VBox(children=...)` instead of the UI | The frontend can't render widgets. Use JupyterLab 3+, Notebook 7, or VS Code with the Jupyter extension. |
+| No pan/zoom toolbar on the run charts | `ipympl` is missing. Install the `zoom` or `all` extra, then restart the kernel. |
 
 ## What you get
 
@@ -51,7 +88,8 @@ notebook is in [`examples/quickstart.ipynb`](examples/quickstart.ipynb).
   between the empirical and theoretical CDF, with the parameters for each.
 - **Fit** scores one distribution against parameters you type, with CDF/PDF overlays.
 - **Data view** — histogram (or counts bar chart), ECDF, box plot, Q-Q plot against the
-  distribution you chose, run chart with a pan/zoom toolbar, and summary statistics.
+  distribution you chose, run chart and sorted run chart with a pan/zoom toolbar, and
+  summary statistics.
 - **File data** — CSV, TSV, Excel, JSON, Parquet, Feather, SPSS/Stata/SAS and HDF5; a
   stack of filter conditions across columns; cleaning (drop NaN, drop ≤ 0, percentile
   trim, drop duplicates); and **Group by**, which fits every group and ranks them.
@@ -66,11 +104,11 @@ and tested on Python 3.12.
 ## Documentation
 
 The full walkthrough — every control, the parameter conventions, supported file types,
-troubleshooting and how the fitting works — is in [`docs/guide.md`](docs/guide.md).
+troubleshooting and how the fitting works — is in [`docs/guide.md`](https://github.com/rberangi/distfitlab/blob/main/docs/guide.md).
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](https://github.com/rberangi/distfitlab/blob/main/LICENSE).
 
 ## Citation
 

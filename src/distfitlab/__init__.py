@@ -18,7 +18,7 @@ Building the widgets takes a couple of seconds, so it is deferred until `main` i
 actually looked up rather than done on `import distfitlab`.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = ["main"]
 
 

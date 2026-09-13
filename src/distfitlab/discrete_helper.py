@@ -912,9 +912,13 @@ viz_bar   = _viz_btn("Counts bar chart")
 viz_ecdf  = _viz_btn("ECDF")
 viz_box   = _viz_btn("Box plot")
 viz_run   = _viz_btn("Run chart")
+viz_srun  = _viz_btn("Sorted run chart")
 viz_stats = _viz_btn("Summary stats")
 viz_split = widgets.Checkbox(value=False, description="split by group", indent=False,
                              layout=widgets.Layout(width="140px"))
+viz_grid  = widgets.Checkbox(value=False, description="grid lines", indent=False,
+                             layout=widgets.Layout(width="110px"),
+                             tooltip="Grid lines on the run charts")
 # Figures: the run chart is interactive (pan/zoom toolbar), everything else is a
 # static image. Both need the ipympl backend active - the static ones are rendered to
 # PNG by hand, because under that backend pyplot would hand back a live canvas.
@@ -1021,16 +1025,41 @@ def _viz_box():
         plt.ylabel("count"); plt.title("Box plot"); plt.grid(axis="y", alpha=0.3)
         plt.tight_layout(); _emit(fig)
 
-def _viz_run():
+_run_fig = None                                      # the run chart on screen, for the grid toggle
+
+def _apply_grid(fig):
+    for ax in fig.axes:
+        if viz_grid.value:
+            ax.grid(True, alpha=0.35, lw=0.6)
+        else:
+            ax.grid(False)                           # no line kwargs, or matplotlib turns it back on
+    fig.canvas.draw_idle()
+
+def _on_grid_toggle(_change):
+    """Update the live run chart in place, without redrawing it or losing the zoom."""
+    if _run_fig is not None and plt.fignum_exists(_run_fig.number):
+        _apply_grid(_run_fig)
+
+def _viz_run(sort=False):
+    global _run_fig
     x = _prepare_data()
-    _viz_start("Run chart - counts in row order, to show drift or steps")
+    if sort:
+        x = np.sort(x)
+        _viz_start("Sorted run chart - counts in ascending order, to show range, gaps and outliers")
+    else:
+        _viz_start("Run chart - counts in row order, to show drift or steps")
+    title = "Sorted run chart" if sort else "Run chart"
     with viz_out:
         clear_output()
-        fig = plt.figure(num="d_viz_run", clear=True); fig.set_size_inches(9, 3.6, forward=True)
-        plt.plot(np.arange(len(x)), x, lw=0.7)
+        fig = plt.figure(num="d_viz_run_sorted" if sort else "d_viz_run", clear=True)
+        fig.set_size_inches(7, 3.6, forward=True)
+        plt.plot(np.arange(len(x)), x, lw=0.7, drawstyle="steps-post" if sort else "default")
         plt.axhline(float(np.mean(x)), color="orange", lw=1, label=f"mean = {np.mean(x):.3f}")
-        plt.xlabel("row order"); plt.ylabel("count"); plt.title("Run chart")
-        plt.legend(fontsize=8); plt.tight_layout(); _emit(fig, live=True)
+        if sort:
+            plt.axhline(float(np.median(x)), color="green", lw=1, ls="--", label=f"median = {np.median(x):g}")
+        plt.xlabel("rank (sorted)" if sort else "row order"); plt.ylabel("count"); plt.title(title)
+        plt.legend(fontsize=8); _apply_grid(fig); plt.tight_layout()
+        _run_fig = fig; _emit(fig, live=True)
 
 def _viz_stats():
     sets = _data_by_group()
@@ -1054,7 +1083,8 @@ def _viz_stats():
 
 viz_bar.on_click(_viz_guard(_viz_bar));   viz_ecdf.on_click(_viz_guard(_viz_ecdf))
 viz_box.on_click(_viz_guard(_viz_box));   viz_run.on_click(_viz_guard(_viz_run))
-viz_stats.on_click(_viz_guard(_viz_stats))
+viz_stats.on_click(_viz_guard(_viz_stats)); viz_srun.on_click(_viz_guard(lambda: _viz_run(sort=True)))
+viz_grid.observe(_on_grid_toggle, names="value")
 
 def _sep(label):
     """Captioned rule marking the start of a block of the UI."""
@@ -1112,7 +1142,7 @@ _tab_css = widgets.HTML("<style>"
     "</style>")
 viz_row = widgets.HBox([widgets.HTML("<b style='white-space:nowrap'>Visualize:</b>",
                                      layout=widgets.Layout(width="72px")),
-                        viz_bar, viz_ecdf, viz_box, viz_run, viz_stats, viz_split])
+                        viz_bar, viz_ecdf, viz_box, viz_run, viz_srun, viz_stats, viz_split, viz_grid])
 
 results_tabs = widgets.Tab(children=[out, widgets.VBox([find_status, find_out]),
                                      widgets.VBox([viz_status, viz_out])])

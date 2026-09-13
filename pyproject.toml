@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "distfitlab"
+dynamic = ["version"]
+description = "Interactive distribution fitting in Jupyter: fit, rank and inspect continuous and count distributions"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Reza Berangi", email = "rberangi@gmail.com" }]
+keywords = ["statistics", "distribution fitting", "jupyter", "ipywidgets",
+            "scipy", "goodness of fit", "poisson", "weibull"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Jupyter",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+dependencies = [
+    "numpy>=1.23",
+    "pandas>=1.5",
+    "scipy>=1.9",
+    "matplotlib>=3.9",      # boxplot(tick_labels=...)
+    "ipywidgets>=8.0",      # RadioButtons(orientation=...), Tab titles
+]
+
+[project.optional-dependencies]
+excel   = ["openpyxl"]              # .xlsx / .xls
+parquet = ["pyarrow"]               # .parquet, .feather, .arrow
+spss    = ["pyreadstat"]            # .sav, .dta, .sas7bdat, .xpt
+hdf5    = ["tables"]                # .h5, .hdf5
+zoom    = ["ipympl>=0.9"]           # pan/zoom toolbar on the run chart
+all     = ["openpyxl", "pyarrow", "pyreadstat", "tables", "ipympl>=0.9"]
+dev     = ["pytest>=7", "nbformat", "nbconvert", "jupyter"]
+
+[project.urls]
+Homepage = "https://github.com/rberangi/distfitlab"
+Source   = "https://github.com/rberangi/distfitlab"
+Issues   = "https://github.com/rberangi/distfitlab/issues"
+
+[tool.hatch.version]
+path = "src/distfitlab/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/distfitlab"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/distfitlab", "examples", "docs", "tests", "README.md", "LICENSE", "CHANGELOG.md"]

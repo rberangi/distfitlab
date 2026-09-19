@@ -146,3 +146,189 @@ def test_filter_stack_and_cleaning():
     assert len(ch._current_df()) == int((df["machine"] == "A").sum())
     ch._clear_filters()
     ch.mode_dd.value = "sim"
+
+
+def test_event_probabilities_under_a_model():
+    import scipy.stats as st
+    from distfitlab.probability import model_probability
+    cdf = lambda t: st.poisson.cdf(t, 4.0)
+    mp = lambda op, a, b=None: model_probability(cdf, op, a, b, discrete=True)
+    assert np.isclose(mp("<=", 2), st.poisson.cdf(2, 4))
+    assert np.isclose(mp("<", 2), st.poisson.cdf(1, 4))            # strict bound drops k = 2
+    assert np.isclose(mp(">", 2), st.poisson.sf(2, 4))
+    assert np.isclose(mp(">=", 2), st.poisson.sf(1, 4))
+    assert np.isclose(mp("==", 2), st.poisson.pmf(2, 4))
+    assert np.isclose(mp("between", 3, 1), st.poisson.cdf(3, 4) - st.poisson.cdf(0, 4))
+    assert mp("<", 0) == 0.0                                        # nothing below zero counts
+    zip_cdf = lambda t: dh.theory_cdf("Zero-Inflated Poisson", (0.3, 4.0), t)
+    assert model_probability(zip_cdf, "<", 0, discrete=True) == 0.0  # ZIP's CDF formula is not 0 at -1
+    norm = lambda t: st.norm.cdf(t)
+    assert np.isclose(model_probability(norm, ">", 1.96), 0.025, atol=1e-3)
+    assert model_probability(norm, "==", 0.0) == 0.0
+
+
+def test_wilson_interval_and_conditional_summary():
+    from distfitlab.probability import wilson_interval, conditional_summary
+    lo, hi = wilson_interval(0, 10)
+    assert lo == 0.0 and np.isclose(hi, 0.2775, atol=1e-3)
+    x_all = np.arange(1, 101)                  # 1..100
+    x_cond = np.arange(51, 101)                # the condition keeps 51..100
+    r = conditional_summary(x_cond, x_all, ">", 90)
+    assert (r["k"], r["n"], r["k_all"], r["n_all"]) == (10, 50, 10, 100)
+    assert np.isclose(r["p"], 0.2) and np.isclose(r["p_all"], 0.1) and np.isclose(r["ratio"], 2.0)
+    assert np.isclose(r["p_cond_given_e"], 1.0)                     # every value > 90 is in the condition
+    assert np.isnan(conditional_summary(x_cond, x_all, ">", 90, subset=False)["p_cond_given_e"])
+
+
+def test_conditional_probability_button_in_both_apps():
+    rng = np.random.default_rng(8)
+    season = rng.choice(["summer", "winter"], 2000)
+    counts = np.where(season == "summer", rng.poisson(9, 2000), rng.poisson(4, 2000))
+    df = pd.DataFrame({"season": season, "count": counts})
+    summer = df.loc[df.season == "summer", "count"]
+    for app in (dh, ch):
+        app._use_dataframe(df, origin="path") if app is ch else _load_discrete(df)
+        app.mode_dd.value = "file"; app.col_dd.value = "count"
+        app._clear_filters()
+        app.filter_col.value, app.filter_op.value, app.filter_val1.value = "season", "==", "summer"
+        app._add_filter()
+        app.prob_op.value, app.prob_v1.value = ">", 6
+        app._on_prob()
+        html = app.prob_out.value
+        assert f"{(summer > 6).mean():.3f}" in html                     # P(E | season == summer)
+        assert f"{(df['count'] > 6).mean():.3f}" in html                # P(E) over all rows
+        both = ((df["count"] > 6) & (df.season == "summer")).sum() / (df["count"] > 6).sum()
+        assert f"{both:.3f}" in html                                    # P(condition | E), Bayes
+        assert "season == summer" in html
+        app._clear_filters(); app.mode_dd.value = "sim"
+
+
+def _load_discrete(df):
+    """What the Discrete app's upload handler does, minus reading the file."""
+    dh.uploader.df_raw = df.copy(); dh.uploader.df = df
+    dh.filter_col.options = list(df.columns)
+    dh.group_col.options = ["(none)"] + list(df.columns); dh.group_col.value = "(none)"
+    dh._refresh_columns()
+
+
+def test_formula_box_follows_filters_and_event():
+    rng = np.random.default_rng(9)
+    df = pd.DataFrame({"season": rng.choice(["winter", "summer"], 300),
+                       "year": rng.integers(0, 2, 300), "count": rng.poisson(5, 300)})
+    _load_discrete(df)
+    dh.mode_dd.value = "file"; dh.col_dd.value = "count"; dh._clear_filters()
+    dh.prob_op.value, dh.prob_v1.value = ">", 7
+    assert "P( count &gt; 7 )" in dh.prob_formula.value                  # no condition yet
+    for col, val in (("season", "winter"), ("year", "1")):
+        dh.filter_col.value, dh.filter_op.value, dh.filter_val1.value = col, "==", val
+        dh._add_filter()
+    f = dh.prob_formula.value
+    assert "P( count &gt; 7 | season == winter and year == 1 )" in f
+    assert "= P( count &gt; 7 and season == winter and year == 1 ) / P( season == winter and year == 1 )" in f
+    dh.prob_op.value, dh.prob_v2.value = "between", 3                   # event edits update it too
+    assert "3 ≤ count ≤ 7 | season" in dh.prob_formula.value
+    dh._clear_filters(); dh.mode_dd.value = "sim"
+
+
+def test_groups_follow_natural_order():
+    from distfitlab.grouping import natural_key, values_in_order
+    assert sorted(["10", "2", "1", "12", "-3", "2.5"], key=natural_key) == ["-3", "1", "2", "2.5", "10", "12"]
+    assert sorted(["press-10", "press-2", "Press-1"], key=natural_key) == ["Press-1", "press-2", "press-10"]
+    assert sorted(["summer", "3", "fall"], key=natural_key) == ["3", "fall", "summer"]   # numbers first
+    rng = np.random.default_rng(10)
+    df = pd.DataFrame({"month": rng.integers(1, 13, 1200), "v": rng.gamma(3, 1.0, 1200)})
+    assert values_in_order(df["month"]) == [str(m) for m in range(1, 13)]
+    ch._use_dataframe(df, origin="path"); ch.mode_dd.value = "file"; ch.col_dd.value = "v"
+    ch.group_col.value = "month"; ch.viz_split.value = True
+    assert list(ch.group_val.options) == ["(all groups)"] + [str(m) for m in range(1, 13)]
+    assert [label for label, _v in ch._data_by_group()] == [str(m) for m in range(1, 11)]   # first 10, in order
+    ch.viz_split.value = False; ch.group_col.value = "(none)"; ch.mode_dd.value = "sim"
+
+
+def test_empirical_pdf_uses_pdf_cdf(monkeypatch):
+    shown = []
+    monkeypatch.setattr(ch, "_emit", lambda fig, live=False: shown.append((fig, live)))
+    ch.mode_dd.value = "sim"; ch.bins_int.value = 60; ch.seed_txt.value = "5"   # same sample twice
+    ch._viz_epdf()
+    fig, live = shown[0]
+    assert live                                                   # zoomable, like the run charts
+    line = fig.axes[0].lines[0]
+    r, _ = ch._prepare_data()
+    xs, dens = ch.pdf_cdf(r, bins=60, PDF=True)
+    assert np.allclose(line.get_xdata(), xs) and np.allclose(line.get_ydata(), dens)
+    ch.bins_int.value = 100; ch.seed_txt.value = ""
+
+
+@pytest.mark.parametrize("helper, chart", [(ch, "_viz_ecdf"), (ch, "_viz_epdf"), (dh, "_viz_ecdf"), (dh, "_viz_bar")])
+def test_distribution_charts_are_zoomable_with_grid(helper, chart, monkeypatch):
+    import matplotlib.pyplot as plt
+    shown = []
+    monkeypatch.setattr(helper, "_emit", lambda fig, live=False: shown.append((fig, live)))
+    helper.mode_dd.value = "sim"; helper.viz_grid.value = False
+    getattr(helper, chart)()
+    fig, live = shown[0]
+    ax = fig.axes[0]
+    gridlines = lambda: any(g.get_visible() for g in ax.get_xgridlines() + ax.get_ygridlines())
+    assert live and not gridlines()
+    helper.viz_grid.value = True                                  # toggles the chart on screen
+    assert gridlines()
+    helper.viz_grid.value = False
+    plt.close("all")
+
+
+@pytest.mark.parametrize("helper", [ch, dh])
+def test_split_checkbox_names_the_group_column(helper):
+    df = pd.DataFrame({"month": np.tile(np.arange(1, 13), 50), "count": np.arange(600) % 9})
+    if helper is ch:
+        ch._use_dataframe(df, origin="path")
+    else:
+        _load_discrete(df)
+    helper.mode_dd.value = "file"
+    helper.group_col.value = "(none)"
+    assert helper.viz_split.disabled and helper.viz_split.description == "split by group"
+    helper.group_col.value = "month"
+    assert not helper.viz_split.disabled and helper.viz_split.description == "split by month"
+    helper.mode_dd.value = "sim"                                   # simulated data has no groups
+    assert helper.viz_split.disabled
+    helper.group_col.value = "(none)"
+
+
+@pytest.mark.parametrize("helper", [ch, dh])
+@pytest.mark.parametrize("sort", [False, True])
+def test_run_charts_split_by_group(helper, sort, monkeypatch):
+    import matplotlib.pyplot as plt
+    rng = np.random.default_rng(11)
+    df = pd.DataFrame({"shift": np.repeat(["day", "night", "late"], [300, 200, 100]),
+                       "count": np.concatenate([rng.poisson(9, 300), rng.poisson(4, 200), rng.poisson(6, 100)])})
+    ch._use_dataframe(df, origin="path") if helper is ch else _load_discrete(df)
+    helper.mode_dd.value = "file"; helper.col_dd.value = "count"
+    helper.group_col.value = "shift"; helper.viz_split.value = True
+    shown = []
+    monkeypatch.setattr(helper, "_emit", lambda fig, live=False: shown.append(fig))
+    helper._viz_run(sort=sort)
+    fig = shown[0]
+    # sorted: one overlaid chart; run chart: one panel per group (its data line comes first)
+    lines = fig.axes[0].lines if sort else [ax.lines[0] for ax in fig.axes]
+    if not sort:
+        assert len(fig.axes) == 3
+    assert [l.get_label().split(" (")[0] for l in lines] == ["day", "late", "night"]   # one line per group, in order
+    assert sorted(len(l.get_ydata()) for l in lines) == [100, 200, 300]
+    if sort:
+        for l in lines:
+            x, y = l.get_xdata(), l.get_ydata()
+            assert (np.diff(y) >= 0).all() and 0 < x.min() and x.max() < 100          # percentile rank axis
+    helper.viz_split.value = False; helper.group_col.value = "(none)"; helper.mode_dd.value = "sim"
+    plt.close("all")
+
+
+@pytest.mark.parametrize("helper", [ch, dh])
+def test_event_label_names_the_use_column(helper):
+    df = pd.DataFrame({"count": np.arange(200) % 7, "rentals": np.arange(200) % 5, "g": ["a", "b"] * 100})
+    ch._use_dataframe(df, origin="path") if helper is ch else _load_discrete(df)
+    helper.mode_dd.value = "file"
+    helper.col_dd.value = "count"
+    assert "Event on count:" in helper.prob_label.value
+    helper.col_dd.value = "rentals"
+    assert "Event on rentals:" in helper.prob_label.value
+    helper.mode_dd.value = "sim"
+    assert "Event on the simulated sample:" in helper.prob_label.value

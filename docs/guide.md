@@ -13,7 +13,7 @@ Pick **Data Source**, which has two options:
 Simulated Random Data: choose a **Distribution** and N; a single compact row shows just its parameters.
 UI convention: loc is always first.
 
-From file: upload a file or enter a local path, then choose a Column. Use the panel below it to stack filters, clean the column and group rows (all optional). The Distribution list, N and Seed are hidden in this mode, since they only apply to simulated data. CDF bins lives in the **Visualize data** block and stays visible in both modes, because it sets the empirical CDF that every fit is scored against, file data included.
+From file: upload a file or enter a local path, then choose a Column. Use the **Filter · Clean · Group** panel below it to stack filters, clean the column and group rows (all optional). Group by lives here, not under Visualize, because it changes what is fitted: with *(all groups)* Fit All fits every group, a picked group narrows every fit, chart and probability to its rows, and the Visualize row only uses it when you tick the split checkbox. The Distribution list, N and Seed are hidden in this mode, since they only apply to simulated data. CDF bins lives in the **Visualize data** block and stays visible in both modes, because it sets the empirical CDF that every fit is scored against, file data included.
 
 Reproducibility: for synthetic data, set Seed; for external data, “Fit” and “Fit All” share a cached empirical baseline so results match.
 
@@ -43,9 +43,21 @@ Display CDF and PDF overlays for those parameters.
 
 4) Visualize data  (on-screen block: VISUALIZE DATA, results in the Data view tab)
 
-The **Visualize** buttons draw the data you are about to fit - after filters, cleaning and group selection - into the **Data view** tab. **Q-Q plot** uses the distribution and parameters currently in the Fit row, so it answers "do my parameters match this data?" before you fit. **Run chart** plots values in row order, which shows drift or steps that a histogram hides. **Sorted run chart** plots the same values in ascending order against their rank, with mean and median lines, so the range, gaps, ties and outliers stand out; like the run chart it has a pan/zoom toolbar. Tick **grid lines** to add a light grid to both run charts; it applies to a chart already on screen, keeping the current zoom. With a **Group by** column set, tick **split by group** to draw one series per group (up to 10).
+The **Visualize** buttons draw the data you are about to fit - after filters, cleaning and group selection - into the **Data view** tab. **Q-Q plot** uses the distribution and parameters currently in the Fit row, so it answers "do my parameters match this data?" before you fit. **PDF** (Continuous app) draws the empirical density exactly the way Fit All builds it: an empirical CDF on **CDF bins** equal-width bins, differenced into a density - so it is the curve every PDF overlay is compared against. **PMF** (Discrete app) draws the empirical PMF: the share of rows at each count. Every button in this row plots the data, so the chart titles say "Empirical". **Run chart** plots values in row order, which shows drift or steps that a histogram hides. **Sorted run chart** plots the same values in ascending order against their rank, with mean and median lines, so the range, gaps, ties and outliers stand out; like the run chart it has a pan/zoom toolbar. ECDF, PDF, PMF and both run charts are zoomable, with a pan/zoom toolbar. Tick **grid lines** to add a light grid to them; it applies to the chart already on screen, keeping the current zoom. With a **Group by** column set, tick **split by <column>** - the checkbox names the Group by column, e.g. *split by month*, and is greyed out while Group by is *(none)* - to draw one series per group (up to 10). The **Run chart** then becomes one panel per group, stacked with shared axes and each with its own mean line, because noisy series drawn on top of each other hide one another. The **Sorted run chart** overlays the groups against *percentile rank within group* (0-100%), so groups of different sizes line up, with each group's mean and median in the legend.
 
-5) Save results
+5) Conditional probability  (on-screen block: CONDITIONAL PROBABILITY, results in the Probability tab)
+
+Set an event on the Use column - `<=`, `<`, `>`, `>=`, `between` (two bounds, both included) or `==` a value - and click **P(event | filters)**. The condition is whatever the active filters and the selected **Group** keep, after the same cleaning. A box under the row spells out the probability your settings define, and how it is computed, and updates as you change the event, filters, group or column - for example `P( count > 500 | season == winter and year == 1 ) = P( count > 500 and season == winter and year == 1 ) / P( season == winter and year == 1 )`. The **Probability** tab then shows:
+
+- **P(E | condition)**: the share of kept rows where the event holds, with the counts and a 95% Wilson interval.
+- **P(E) over all rows**: the same share with no filters and no group, for comparison.
+- **Ratio**: P(E | condition) / P(E). Above 1, the condition makes the event more likely.
+- **P(condition | E)**: of the rows where the event holds, the share the condition keeps (Bayes' rule). It is left out while **trim percentiles** is on, because trimming runs separately on the kept rows and on all rows.
+- **P(E) under the model**: the event's probability under the distribution and parameters in the Fit row - set them to a fitted result first. For counts, strict and non-strict bounds differ (P(X < 5) excludes 5); for a continuous distribution they coincide and P(X == a) is 0.
+
+With no filter and no single group selected there is nothing to condition on, so the tab shows P(E) for the data and the model only.
+
+6) Save results
 
 Click Save results to write, into a timestamped folder under outputs/:
 

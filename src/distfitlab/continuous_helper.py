@@ -1,5 +1,5 @@
 # === Full app: multi-format upload, load-from-path, filtering, Fit-all, Find-error (CDF+PDF) ===
-import io, os, tempfile, math, re
+import html, io, os, tempfile, math, re
 import numpy as np, pandas as pd, matplotlib.pyplot as plt
 import scipy.stats as st
 from ipywidgets import GridspecLayout
@@ -8,6 +8,9 @@ from IPython.display import display, HTML, clear_output, FileLink, Image
 from IPython import get_ipython
 
 from .file_readers import read_uploaded_dataframe as _read_uploaded_dataframe
+from .grouping import groups_in_order, values_in_order
+from .probability import (EVENT_OPS, event_text, model_probability, conditional_summary,
+                          probability_table_html, formula_html)
 
 # ---------------- Core helpers ----------------
 def pdf_cdf(x, bins, PDF=True):
@@ -803,7 +806,7 @@ def _refresh_group_values(df=None):
     group_val.layout.display = ""
     try:
         if df is None: df = _current_df()
-        vals = [str(v) for v in pd.Series(df[group_col.value]).dropna().unique().tolist()][:200]
+        vals = values_in_order(pd.Series(df[group_col.value]))
     except Exception:
         vals = []
     keep = group_val.value
@@ -1068,7 +1071,7 @@ def _run_fit_by_group():
     except Exception as e:
         status_html.value = f"<span style='color:#b91c1c'>{e}</span>"; return
     rows, names, errs, frames, skipped = [], [], [], [], []
-    for g, sub in df.groupby(df[gcol].astype(str), sort=True):
+    for g, sub in groups_in_order(df, gcol):
         try:
             r, _note = _clean_series(sub[col])
         except Exception as e:
@@ -1285,16 +1288,30 @@ def _viz_btn(label):
     return widgets.Button(description=label, layout=widgets.Layout(width="auto", flex="0 0 auto"))
 viz_hist  = _viz_btn("Histogram")
 viz_ecdf  = _viz_btn("ECDF")
+viz_epdf  = _viz_btn("PDF")
+viz_ecdf.tooltip = "Empirical CDF: share of values at or below each x"
+viz_epdf.tooltip = "Empirical PDF: the histogram-based CDF on CDF-bins bins, differenced (as Fit All uses)"
 viz_box   = _viz_btn("Box plot")
 viz_qq    = _viz_btn("Q-Q plot")
 viz_run   = _viz_btn("Run chart")
 viz_srun  = _viz_btn("Sorted run chart")
 viz_stats = _viz_btn("Summary stats")
-viz_split = widgets.Checkbox(value=False, description="split by group", indent=False,
-                             layout=widgets.Layout(width="140px"))
+viz_split = widgets.Checkbox(value=False, description="split by group", indent=False, disabled=True,
+                             layout=widgets.Layout(width="auto", flex="0 0 auto", margin="0 18px 0 0"))
+
+def _update_split_label(*_):
+    """Name the Group by column on the split checkbox; disable it while there is nothing to split by."""
+    col = group_col.value if _is_external() else "(none)"
+    viz_split.disabled = col == "(none)"
+    viz_split.description = "split by group" if viz_split.disabled else f"split by {col}"
+    viz_split.tooltip = ("Set Group by (with file data) to split the charts by group" if viz_split.disabled
+                         else f"One series per value of {col} (up to 10)")
+group_col.observe(_update_split_label, names="value")
+mode_dd.observe(_update_split_label, names="value")
+_update_split_label()
 viz_grid  = widgets.Checkbox(value=False, description="grid lines", indent=False,
                              layout=widgets.Layout(width="110px"),
-                             tooltip="Grid lines on the run charts")
+                             tooltip="Grid lines on the zoomable charts: ECDF, empirical PDF/PMF and run charts")
 # Figures: the run chart is interactive (pan/zoom toolbar), everything else is a
 # static image. Both need the ipympl backend active - the static ones are rendered to
 # PNG by hand, because under that backend pyplot would hand back a live canvas.
@@ -1340,7 +1357,7 @@ def _data_by_group():
     if viz_split.value and _is_external() and group_col.value != "(none)":
         df = _current_df()
         groups = []
-        for g, sub in df.groupby(df[group_col.value].astype(str), sort=True):
+        for g, sub in groups_in_order(df, group_col.value):
             try:
                 v, _n = _clean_series(sub[col_dd.value])
             except Exception:
@@ -1383,6 +1400,7 @@ def _viz_hist():
         plt.tight_layout(); _emit(fig)
 
 def _viz_ecdf():
+    global _live_fig
     sets = _data_by_group()
     _viz_start("Empirical CDF")
     with viz_out:
@@ -1392,7 +1410,27 @@ def _viz_ecdf():
             xs = np.sort(v); ys = np.arange(1, len(xs) + 1) / len(xs)
             plt.step(xs, ys, where="post", label=f"{label} (n={len(xs)})")
         plt.xlabel("value"); plt.ylabel("F(x)"); plt.title("Empirical CDF")
-        plt.legend(fontsize=8); plt.tight_layout(); _emit(fig)
+        plt.legend(fontsize=8); _apply_grid(fig); plt.tight_layout()
+        _live_fig = fig; _emit(fig, live=True)
+
+def _viz_epdf():
+    """Empirical PDF the way Fit All builds it: a CDF on CDF-bins equal-width bins, differenced."""
+    global _live_fig
+    sets = _data_by_group()
+    nbins = int(bins_int.value)
+    if nbins < 3:
+        raise ValueError("Set CDF bins to 3 or more for an empirical PDF.")
+    _viz_start(f"Empirical PDF - the histogram-based CDF on <b>{nbins}</b> bins, differenced "
+               "(the same curve Fit All compares against)")
+    with viz_out:
+        clear_output()
+        fig = plt.figure(num="viz_epdf", clear=True); fig.set_size_inches(8, 4.2, forward=True)
+        for label, v in sets:
+            xs, dens = pdf_cdf(np.asarray(v, dtype=float), bins=nbins, PDF=True)
+            plt.plot(xs, dens, lw=1.2, label=f"{label} (n={len(v)})")
+        plt.xlabel("value"); plt.ylabel("f(x)"); plt.title(f"Empirical PDF ({nbins} bins)")
+        plt.legend(fontsize=8); _apply_grid(fig); plt.tight_layout()
+        _live_fig = fig; _emit(fig, live=True)
 
 def _viz_box():
     sets = _data_by_group()
@@ -1430,7 +1468,7 @@ def _viz_qq():
         plt.xlabel(f"{proc} quantiles"); plt.ylabel("sample quantiles")
         plt.title("Q-Q plot"); plt.legend(fontsize=8); plt.tight_layout(); _emit(fig)
 
-_run_fig = None                                      # the run chart on screen, for the grid toggle
+_live_fig = None     # the zoomable chart on screen (ECDF, empirical PDF/PMF, run charts), for the grid toggle
 
 def _apply_grid(fig):
     for ax in fig.axes:
@@ -1441,30 +1479,57 @@ def _apply_grid(fig):
     fig.canvas.draw_idle()
 
 def _on_grid_toggle(_change):
-    """Update the live run chart in place, without redrawing it or losing the zoom."""
-    if _run_fig is not None and plt.fignum_exists(_run_fig.number):
-        _apply_grid(_run_fig)
+    """Update the zoomable chart on screen in place, without redrawing it or losing the zoom."""
+    if _live_fig is not None and plt.fignum_exists(_live_fig.number):
+        _apply_grid(_live_fig)
 
 def _viz_run(sort=False):
-    global _run_fig
-    r, _bins = _prepare_data()
+    global _live_fig
+    sets = _data_by_group()
+    split = len(sets) > 1
     if sort:
-        r = np.sort(r)
-        _viz_start("Sorted run chart - values in ascending order, to show range, gaps and outliers")
+        sets = [(label, np.sort(g)) for label, g in sets]
+        _viz_start(f"Sorted run chart - values in ascending order, to show range, gaps and outliers"
+                   + (f" - <b>{len(sets)} groups</b>, against percentile rank so different sizes line up" if split else ""))
     else:
-        _viz_start("Run chart - values in row order, to show drift or steps")
+        _viz_start(f"Run chart - values in row order, to show drift or steps"
+                   + (f" - <b>{len(sets)} groups</b>, each in its own row order" if split else ""))
     title = "Sorted run chart" if sort else "Run chart"
     with viz_out:
         clear_output()
         fig = plt.figure(num="viz_run_sorted" if sort else "viz_run", clear=True)
         fig.set_size_inches(7, 3.6, forward=True)
-        plt.plot(np.arange(len(r)), r, lw=0.7)
-        plt.axhline(float(np.mean(r)), color="orange", lw=1, label=f"mean = {np.mean(r):.3f}")
-        if sort:
-            plt.axhline(float(np.median(r)), color="green", lw=1, ls="--", label=f"median = {np.median(r):.3f}")
-        plt.xlabel("rank (sorted)" if sort else "row order"); plt.ylabel("value"); plt.title(title)
-        plt.legend(fontsize=8); _apply_grid(fig); plt.tight_layout()
-        _run_fig = fig; _emit(fig, live=True)
+        if split and not sort:
+            # overlaid noisy series hide each other, so the run chart splits into small multiples:
+            # one panel per group, shared axes, each with its own mean line
+            fig.clear(); fig.set_size_inches(7, max(3.6, 1.15 * len(sets) + 0.9), forward=True)
+            axes = fig.subplots(len(sets), 1, sharex=True, sharey=True, squeeze=False)[:, 0]
+            for i, (ax, (label, g)) in enumerate(zip(axes, sets)):
+                colour = f"C{i}"
+                ax.plot(np.arange(len(g)), g, lw=0.6, color=colour, label=f"{label} (n={len(g)})")
+                ax.axhline(float(np.mean(g)), color="black", lw=0.9, ls="--", label=f"mean {np.mean(g):.3f}")
+                ax.legend(fontsize=7, loc="upper left", ncol=2, frameon=False)
+            axes[-1].set_xlabel("row order within group")
+            fig.supylabel("value", fontsize=10)
+            axes[0].set_title(title)
+        elif split:
+            # sorted values overlay cleanly; percentile rank lines up groups of different sizes
+            for label, g in sets:
+                xs = (np.arange(1, len(g) + 1) - 0.5) / len(g) * 100
+                stats = f"mean {np.mean(g):.3f}, median {np.median(g):.3f}"
+                plt.plot(xs, g, lw=0.8, label=f"{label} (n={len(g)}, {stats})")
+            plt.xlabel("percentile rank within group (%)")
+        else:
+            r = sets[0][1]
+            plt.plot(np.arange(len(r)), r, lw=0.7)
+            plt.axhline(float(np.mean(r)), color="orange", lw=1, label=f"mean = {np.mean(r):.3f}")
+            if sort:
+                plt.axhline(float(np.median(r)), color="green", lw=1, ls="--", label=f"median = {np.median(r):.3f}")
+            plt.xlabel("rank (sorted)" if sort else "row order")
+        if not (split and not sort):
+            plt.ylabel("value"); plt.title(title); plt.legend(fontsize=8)
+        _apply_grid(fig); fig.tight_layout()
+        _live_fig = fig; _emit(fig, live=True)
 
 def _viz_stats():
     sets = _data_by_group()
@@ -1485,10 +1550,85 @@ def _viz_stats():
         display(HTML(style + pd.DataFrame(rows).to_html(index=False, classes="viz-stats", escape=False)))
 
 viz_hist.on_click(_viz_guard(_viz_hist));   viz_ecdf.on_click(_viz_guard(_viz_ecdf))
+viz_epdf.on_click(_viz_guard(_viz_epdf))
 viz_box.on_click(_viz_guard(_viz_box));     viz_qq.on_click(_viz_guard(_viz_qq))
 viz_run.on_click(_viz_guard(_viz_run));     viz_stats.on_click(_viz_guard(_viz_stats))
 viz_srun.on_click(_viz_guard(lambda: _viz_run(sort=True)))
 viz_grid.observe(_on_grid_toggle, names="value")
+
+# ---------- Conditional probability ----------
+# P(event on the Use column | the rows the filters and the selected group keep)
+prob_op  = widgets.Dropdown(options=list(EVENT_OPS), value=">", layout=widgets.Layout(width="95px"))
+prob_v1  = widgets.FloatText(value=0.0, layout=widgets.Layout(width="110px"))
+prob_v2  = widgets.FloatText(value=0.0, layout=widgets.Layout(width="110px"))   # upper bound, "between" only
+prob_btn = widgets.Button(description="P(event | filters)", button_style="primary",
+                          layout=widgets.Layout(width="auto", flex="0 0 auto"))
+prob_out = widgets.HTML("")
+prob_formula = widgets.HTML("")   # the probability the current settings define, kept live
+prob_label   = widgets.HTML("")   # "Event on <Use column>:", kept in step with the column
+
+def _on_prob_op(*_):
+    prob_v2.layout.display = "" if prob_op.value == "between" else "none"
+prob_op.observe(_on_prob_op, names="value"); _on_prob_op()
+
+def _condition_text():
+    """The active filters and selected group, as one readable condition ("" when none)."""
+    if not _is_external():
+        return ""
+    parts = [" ".join(_cond_text(c).split()) for c in _filters if c["on"]]
+    if group_col.value != "(none)" and group_val.value != "(all groups)":
+        parts.append(f"{group_col.value} == {group_val.value}")
+    return " and ".join(parts)
+
+def _all_rows_values():
+    """The Use column over every row - no filters, no group - cleaned the same way."""
+    df = uploader.df_raw.drop_duplicates() if clean_dedup.value else uploader.df_raw
+    v, _note = _clean_series(df[col_dd.value])
+    return v
+
+def _on_prob(_=None):
+    results_tabs.selected_index = 3
+    try:
+        x, _bins = _prepare_data()
+        op, a, b = prob_op.value, float(prob_v1.value), float(prob_v2.value)
+        cond = _condition_text()
+        x_all = _all_rows_values() if cond else None
+        res = conditional_summary(x, x_all, op, a, b, subset=not clean_trim.value)
+    except Exception as e:
+        prob_out.value = f"<span style='color:#b91c1c'>{e}</span>"; return
+    col = col_dd.value if _is_external() else "x"
+    model_label = model_p = None
+    proc = find_proc_dd.value
+    p1, p2, p3, p4 = float(p1_in.value), float(p2_in.value), float(p3_in.value), float(p4_in.value)
+    try:
+        _validate_proc_params(proc, p1, p2, p3, p4)
+        params = _params_for_theory(proc, p1, p2, p3, p4)
+        model_p = model_probability(lambda t: theory_cdf(proc, params, t), op, a, b, discrete=False)
+        model_label = f"{proc} with the parameters in the Fit row"
+    except Exception as e:
+        model_label, model_p = f"{proc}: {e}", None
+    note = ("" if cond or not _is_external() else
+            "Nothing narrows the data yet: add a filter or pick one group to condition on it.")
+    prob_out.value = (probability_table_html(event_text(col, op, a, b), cond, res, model_label, model_p, note)
+                      + _data_context())
+
+prob_btn.on_click(_on_prob)
+
+def _update_prob_formula(*_):
+    col = (col_dd.value or "x") if _is_external() else "x"
+    try:
+        ev = event_text(col, prob_op.value, float(prob_v1.value), float(prob_v2.value))
+    except Exception:
+        return
+    prob_formula.value = formula_html(ev, _condition_text())
+    name = html.escape(str(col_dd.value)) if (_is_external() and col_dd.value) else "the simulated sample"
+    prob_label.value = f"<b style='white-space:nowrap'>Event on {name}:</b>"
+
+# every filter change re-renders filter_list, so watching its children follows add/toggle/remove/clear
+for _w, _trait in ((prob_op, "value"), (prob_v1, "value"), (prob_v2, "value"), (col_dd, "value"),
+                   (group_col, "value"), (group_val, "value"), (mode_dd, "value"), (filter_list, "children")):
+    _w.observe(_update_prob_formula, names=_trait)
+_update_prob_formula()
 
 def _sep(label):
     """Captioned rule marking the start of a block of the UI."""
@@ -1512,7 +1652,8 @@ filter_row2  = widgets.HBox([filter_clear, filter_state])
 clean_row    = widgets.HBox([widgets.HTML("<b style='white-space:nowrap'>Clean:</b>", layout=widgets.Layout(width="58px")),
                              clean_dropna, clean_pos, clean_dedup, clean_trim, trim_lo, trim_hi])
 group_row    = widgets.HBox([group_col, group_val])
-filter_panel = widgets.VBox([filter_row1, filter_list, filter_row2, clean_row, group_row])
+filter_panel = widgets.VBox([_sep("Filter · Clean · Group"),   # inside the panel, so it hides with it
+                             filter_row1, filter_list, filter_row2, clean_row, group_row])
 filter_panel.layout.display = "none"
 
 process_table = make_process_table()
@@ -1536,14 +1677,19 @@ _tab_css = widgets.HTML("<style>"
     ".jupyter-widget-TabPanel-tabBar .p-TabBar-tabLabel, .widget-tab-bar .p-TabBar-tabLabel"
     " { overflow: visible !important; text-overflow: clip !important; }"
     "</style>")
-viz_row = widgets.HBox([bins_int, viz_hist, viz_ecdf, viz_box, viz_qq, viz_run, viz_srun, viz_stats, viz_split, viz_grid],
+viz_row = widgets.HBox([bins_int, viz_hist, viz_ecdf, viz_epdf, viz_box, viz_qq, viz_run, viz_srun, viz_stats, viz_split, viz_grid],
                        layout=widgets.Layout(flex_flow="row wrap"))   # wrap, or narrow notebooks clip the end
 
 results_tabs = widgets.Tab(children=[out, widgets.VBox([find_status, find_out]),
-                                     widgets.VBox([viz_status, viz_out])])
+                                     widgets.VBox([viz_status, viz_out]), prob_out])
 results_tabs.set_title(0, "All-distribution results")   # filled by Fit All
 results_tabs.set_title(1, "Single-distribution results")  # filled by Fit
 results_tabs.set_title(2, "Data view")                    # filled by the Visualize buttons
+results_tabs.set_title(3, "Probability")                  # filled by P(event | filters)
+
+prob_row = widgets.HBox([prob_label,
+                         prob_op, prob_v1, prob_v2, prob_btn],
+                        layout=widgets.Layout(flex_flow="row wrap", align_items="center"))
 
 _ui = widgets.VBox([
     _tab_css,                 # widen the result tab headers
@@ -1560,9 +1706,12 @@ _ui = widgets.VBox([
     controls_row,             # Fit All + loc option + Save results
     _sep("Visualize data"),
     viz_row,                  # plots of the data itself
+    _sep("Conditional probability"),
+    prob_row,                 # P(event | filters and group)
+    prob_formula,             # live formula for the current settings
     _sep("Results"),
     status_html,              # data loading, Fit All summary, Save links
-    results_tabs,             # three result tabs
+    results_tabs,             # four result tabs
 ])
 
 # Hook observers & show UI

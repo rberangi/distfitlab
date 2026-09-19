@@ -1,5 +1,5 @@
 # === Discrete DistFit Toolbox: Poisson, Binomial, Geometric, Negative Binomial, Zero-Inflated Poisson ===
-import io, os, math, numpy as np, pandas as pd, matplotlib.pyplot as plt
+import html, io, os, math, numpy as np, pandas as pd, matplotlib.pyplot as plt
 import scipy.stats as st
 from scipy.special import gammaln
 import ipywidgets as widgets
@@ -8,6 +8,9 @@ from IPython.display import display, HTML, clear_output, FileLink, Image
 from IPython import get_ipython
 
 from .file_readers import read_uploaded_dataframe as _read_uploaded_dataframe
+from .grouping import groups_in_order, values_in_order
+from .probability import (EVENT_OPS, event_text, model_probability, conditional_summary,
+                          probability_table_html, formula_html)
 
 plt.rcParams["figure.dpi"] = 120
 
@@ -487,7 +490,7 @@ def _refresh_group_values(df=None):
     group_val.layout.display = ""
     try:
         if df is None: df = _current_df()
-        vals = [str(v) for v in pd.Series(df[group_col.value]).dropna().unique().tolist()][:200]
+        vals = values_in_order(pd.Series(df[group_col.value]))
     except Exception:
         vals = []
     keep = group_val.value
@@ -672,7 +675,7 @@ def _run_fit_by_group():
     except Exception as e:
         status_html.value = f"<span style='color:#b91c1c'>{e}</span>"; return
     rows, names, errs, frames, skipped = [], [], [], [], []
-    for g, sub in df.groupby(df[gcol].astype(str), sort=True):
+    for g, sub in groups_in_order(df, gcol):
         try:
             x = _clean_counts(sub[col])
         except Exception as e:
@@ -812,6 +815,28 @@ def _run_fit_all(_=None):
 
 fit_all_btn.on_click(_run_fit_all)
 
+def _fit_row_pars():
+    """(distribution, parameters) from the Fit row, clamped into each parameter's valid range."""
+    d = find_proc_dd.value
+    p1 = float(p1_in.value)
+    p2 = float(p2_in.value)
+    if d == "Poisson":
+        pars = (max(p1,1e-9),)
+    elif d == "Binomial":
+        n = int(round(p1))
+        if n < 1: raise ValueError("n must be >=1")
+        p = min(max(p2, 1e-9), 1-1e-9)
+        pars = (n, p)
+    elif d == "Geometric":
+        p = min(max(p1, 1e-9), 1-1e-9); pars = (p,)
+    elif d == "Negative Binomial":
+        r = max(p1, 1e-9); p = min(max(p2, 1e-9), 1-1e-9); pars = (r, p)
+    elif d == "Zero-Inflated Poisson":
+        pi = min(max(p1, 0.0), 0.999999); lam = max(p2, 1e-9); pars = (pi, lam)
+    else:
+        raise ValueError("Unknown distribution")
+    return d, pars
+
 def _on_find(_=None):
     results_tabs.selected_index = 1
     find_status.value = ""
@@ -824,26 +849,8 @@ def _on_find(_=None):
     k_sup = support_for_plot(x, extra=25)
     F_emp_sup = np.interp(k_sup, k_emp, F_emp, left=0.0, right=1.0)
 
-    d = find_proc_dd.value
-    p1 = float(p1_in.value)
-    p2 = float(p2_in.value)
-    # validate
     try:
-        if d == "Poisson": 
-            pars = (max(p1,1e-9),)
-        elif d == "Binomial":
-            n = int(round(p1)); 
-            if n < 1: raise ValueError("n must be >=1")
-            p = min(max(p2, 1e-9), 1-1e-9)
-            pars = (n, p)
-        elif d == "Geometric":
-            p = min(max(p1, 1e-9), 1-1e-9); pars = (p,)
-        elif d == "Negative Binomial":
-            r = max(p1, 1e-9); p = min(max(p2, 1e-9), 1-1e-9); pars = (r, p)
-        elif d == "Zero-Inflated Poisson":
-            pi = min(max(p1, 0.0), 0.999999); lam = max(p2, 1e-9); pars = (pi, lam)
-        else:
-            raise ValueError("Unknown distribution")
+        d, pars = _fit_row_pars()
     except Exception as e:
         find_status.value = f"<span style='color:#b91c1c'>Parameter error: {e}</span>"; return
 
@@ -966,17 +973,30 @@ viz_out    = widgets.Output()
 viz_status = widgets.HTML("")
 def _viz_btn(label):
     return widgets.Button(description=label, layout=widgets.Layout(width="auto", flex="0 0 auto"))
-viz_bar   = _viz_btn("Counts bar chart")
+viz_bar   = _viz_btn("PMF")
+viz_bar.tooltip = "Empirical PMF: share of rows at each count"
 viz_ecdf  = _viz_btn("ECDF")
+viz_ecdf.tooltip = "Empirical CDF: share of rows at or below each count"
 viz_box   = _viz_btn("Box plot")
 viz_run   = _viz_btn("Run chart")
 viz_srun  = _viz_btn("Sorted run chart")
 viz_stats = _viz_btn("Summary stats")
-viz_split = widgets.Checkbox(value=False, description="split by group", indent=False,
-                             layout=widgets.Layout(width="140px"))
+viz_split = widgets.Checkbox(value=False, description="split by group", indent=False, disabled=True,
+                             layout=widgets.Layout(width="auto", flex="0 0 auto", margin="0 18px 0 0"))
+
+def _update_split_label(*_):
+    """Name the Group by column on the split checkbox; disable it while there is nothing to split by."""
+    col = group_col.value if _is_external() else "(none)"
+    viz_split.disabled = col == "(none)"
+    viz_split.description = "split by group" if viz_split.disabled else f"split by {col}"
+    viz_split.tooltip = ("Set Group by (with file data) to split the charts by group" if viz_split.disabled
+                         else f"One series per value of {col} (up to 10)")
+group_col.observe(_update_split_label, names="value")
+mode_dd.observe(_update_split_label, names="value")
+_update_split_label()
 viz_grid  = widgets.Checkbox(value=False, description="grid lines", indent=False,
                              layout=widgets.Layout(width="110px"),
-                             tooltip="Grid lines on the run charts")
+                             tooltip="Grid lines on the zoomable charts: ECDF, empirical PDF/PMF and run charts")
 # Figures: the run chart is interactive (pan/zoom toolbar), everything else is a
 # static image. Both need the ipympl backend active - the static ones are rendered to
 # PNG by hand, because under that backend pyplot would hand back a live canvas.
@@ -1020,7 +1040,7 @@ def _data_by_group():
     if viz_split.value and _is_external() and group_col.value != "(none)":
         df = _current_df()
         groups = []
-        for g, sub in df.groupby(df[group_col.value].astype(str), sort=True):
+        for g, sub in groups_in_order(df, group_col.value):
             try:
                 v = _clean_counts(sub[col_dd.value])
             except Exception:
@@ -1046,6 +1066,7 @@ def _viz_guard(fn):
     return wrapped
 
 def _viz_bar():
+    global _live_fig
     sets = _data_by_group()
     _viz_start("Empirical PMF - share of rows at each count")
     with viz_out:
@@ -1059,9 +1080,11 @@ def _viz_bar():
             plt.bar(ks + (i - (len(sets) - 1) / 2) * width, pmf, width=width,
                     alpha=0.85, label=f"{label} (n={len(v)})")
         plt.xlabel("k"); plt.ylabel("share of rows"); plt.title("Empirical PMF")
-        plt.legend(fontsize=8); plt.tight_layout(); _emit(fig)
+        plt.legend(fontsize=8); _apply_grid(fig); plt.tight_layout()
+        _live_fig = fig; _emit(fig, live=True)
 
 def _viz_ecdf():
+    global _live_fig
     sets = _data_by_group()
     _viz_start("Empirical CDF")
     with viz_out:
@@ -1071,7 +1094,8 @@ def _viz_ecdf():
             xs = np.sort(v); ys = np.arange(1, len(xs) + 1) / len(xs)
             plt.step(xs, ys, where="post", label=f"{label} (n={len(xs)})")
         plt.xlabel("k"); plt.ylabel("F(k)"); plt.title("Empirical CDF")
-        plt.legend(fontsize=8); plt.tight_layout(); _emit(fig)
+        plt.legend(fontsize=8); _apply_grid(fig); plt.tight_layout()
+        _live_fig = fig; _emit(fig, live=True)
 
 def _viz_box():
     sets = _data_by_group()
@@ -1083,7 +1107,7 @@ def _viz_box():
         plt.ylabel("count"); plt.title("Box plot"); plt.grid(axis="y", alpha=0.3)
         plt.tight_layout(); _emit(fig)
 
-_run_fig = None                                      # the run chart on screen, for the grid toggle
+_live_fig = None     # the zoomable chart on screen (ECDF, empirical PDF/PMF, run charts), for the grid toggle
 
 def _apply_grid(fig):
     for ax in fig.axes:
@@ -1094,30 +1118,57 @@ def _apply_grid(fig):
     fig.canvas.draw_idle()
 
 def _on_grid_toggle(_change):
-    """Update the live run chart in place, without redrawing it or losing the zoom."""
-    if _run_fig is not None and plt.fignum_exists(_run_fig.number):
-        _apply_grid(_run_fig)
+    """Update the zoomable chart on screen in place, without redrawing it or losing the zoom."""
+    if _live_fig is not None and plt.fignum_exists(_live_fig.number):
+        _apply_grid(_live_fig)
 
 def _viz_run(sort=False):
-    global _run_fig
-    x = _prepare_data()
+    global _live_fig
+    sets = _data_by_group()
+    split = len(sets) > 1
     if sort:
-        x = np.sort(x)
-        _viz_start("Sorted run chart - counts in ascending order, to show range, gaps and outliers")
+        sets = [(label, np.sort(g)) for label, g in sets]
+        _viz_start(f"Sorted run chart - counts in ascending order, to show range, gaps and outliers"
+                   + (f" - <b>{len(sets)} groups</b>, against percentile rank so different sizes line up" if split else ""))
     else:
-        _viz_start("Run chart - counts in row order, to show drift or steps")
+        _viz_start(f"Run chart - counts in row order, to show drift or steps"
+                   + (f" - <b>{len(sets)} groups</b>, each in its own row order" if split else ""))
     title = "Sorted run chart" if sort else "Run chart"
     with viz_out:
         clear_output()
         fig = plt.figure(num="d_viz_run_sorted" if sort else "d_viz_run", clear=True)
         fig.set_size_inches(7, 3.6, forward=True)
-        plt.plot(np.arange(len(x)), x, lw=0.7, drawstyle="steps-post" if sort else "default")
-        plt.axhline(float(np.mean(x)), color="orange", lw=1, label=f"mean = {np.mean(x):.3f}")
-        if sort:
-            plt.axhline(float(np.median(x)), color="green", lw=1, ls="--", label=f"median = {np.median(x):g}")
-        plt.xlabel("rank (sorted)" if sort else "row order"); plt.ylabel("count"); plt.title(title)
-        plt.legend(fontsize=8); _apply_grid(fig); plt.tight_layout()
-        _run_fig = fig; _emit(fig, live=True)
+        if split and not sort:
+            # overlaid noisy series hide each other, so the run chart splits into small multiples:
+            # one panel per group, shared axes, each with its own mean line
+            fig.clear(); fig.set_size_inches(7, max(3.6, 1.15 * len(sets) + 0.9), forward=True)
+            axes = fig.subplots(len(sets), 1, sharex=True, sharey=True, squeeze=False)[:, 0]
+            for i, (ax, (label, g)) in enumerate(zip(axes, sets)):
+                colour = f"C{i}"
+                ax.plot(np.arange(len(g)), g, lw=0.6, color=colour, label=f"{label} (n={len(g)})")
+                ax.axhline(float(np.mean(g)), color="black", lw=0.9, ls="--", label=f"mean {np.mean(g):g}")
+                ax.legend(fontsize=7, loc="upper left", ncol=2, frameon=False)
+            axes[-1].set_xlabel("row order within group")
+            fig.supylabel("count", fontsize=10)
+            axes[0].set_title(title)
+        elif split:
+            # sorted values overlay cleanly; percentile rank lines up groups of different sizes
+            for label, g in sets:
+                xs = (np.arange(1, len(g) + 1) - 0.5) / len(g) * 100
+                stats = f"mean {np.mean(g):g}, median {np.median(g):g}"
+                plt.plot(xs, g, lw=0.8, drawstyle="steps-post" if sort else "default", label=f"{label} (n={len(g)}, {stats})")
+            plt.xlabel("percentile rank within group (%)")
+        else:
+            x = sets[0][1]
+            plt.plot(np.arange(len(x)), x, lw=0.7, drawstyle="steps-post" if sort else "default")
+            plt.axhline(float(np.mean(x)), color="orange", lw=1, label=f"mean = {np.mean(x):g}")
+            if sort:
+                plt.axhline(float(np.median(x)), color="green", lw=1, ls="--", label=f"median = {np.median(x):g}")
+            plt.xlabel("rank (sorted)" if sort else "row order")
+        if not (split and not sort):
+            plt.ylabel("count"); plt.title(title); plt.legend(fontsize=8)
+        _apply_grid(fig); fig.tight_layout()
+        _live_fig = fig; _emit(fig, live=True)
 
 def _viz_stats():
     sets = _data_by_group()
@@ -1142,6 +1193,75 @@ def _viz_stats():
 viz_bar.on_click(_viz_guard(_viz_bar));   viz_ecdf.on_click(_viz_guard(_viz_ecdf))
 viz_box.on_click(_viz_guard(_viz_box));   viz_run.on_click(_viz_guard(_viz_run))
 viz_stats.on_click(_viz_guard(_viz_stats)); viz_srun.on_click(_viz_guard(lambda: _viz_run(sort=True)))
+
+# ------------- Conditional probability -------------
+# P(event on the counts column | the rows the filters and the selected group keep)
+prob_op  = widgets.Dropdown(options=list(EVENT_OPS), value=">", layout=widgets.Layout(width="95px"))
+prob_v1  = widgets.FloatText(value=0.0, layout=widgets.Layout(width="110px"))
+prob_v2  = widgets.FloatText(value=0.0, layout=widgets.Layout(width="110px"))   # upper bound, "between" only
+prob_btn = widgets.Button(description="P(event | filters)", button_style="primary",
+                          layout=widgets.Layout(width="auto", flex="0 0 auto"))
+prob_out = widgets.HTML("")
+prob_formula = widgets.HTML("")   # the probability the current settings define, kept live
+prob_label   = widgets.HTML("")   # "Event on <Use column>:", kept in step with the column
+
+def _on_prob_op(*_):
+    prob_v2.layout.display = "" if prob_op.value == "between" else "none"
+prob_op.observe(_on_prob_op, names="value"); _on_prob_op()
+
+def _condition_text():
+    """The active filters and selected group, as one readable condition ("" when none)."""
+    if not _is_external():
+        return ""
+    parts = [" ".join(_cond_text(c).split()) for c in _filters if c["on"]]
+    if group_col.value != "(none)" and group_val.value != "(all groups)":
+        parts.append(f"{group_col.value} == {group_val.value}")
+    return " and ".join(parts)
+
+def _all_rows_values():
+    """The counts column over every row - no filters, no group - cleaned the same way."""
+    df = uploader.df_raw.drop_duplicates() if clean_dedup.value else uploader.df_raw
+    return _clean_counts(df[col_dd.value])
+
+def _on_prob(_=None):
+    results_tabs.selected_index = 3
+    try:
+        x = _prepare_data()
+        op, a, b = prob_op.value, float(prob_v1.value), float(prob_v2.value)
+        cond = _condition_text()
+        x_all = _all_rows_values() if cond else None
+        res = conditional_summary(x, x_all, op, a, b, subset=not clean_trim.value)
+    except Exception as e:
+        prob_out.value = f"<span style='color:#b91c1c'>{e}</span>"; return
+    col = col_dd.value if _is_external() else "k"
+    try:
+        d, pars = _fit_row_pars()
+        model_p = model_probability(lambda t: theory_cdf(d, pars, t), op, a, b, discrete=True)
+        model_label = f"{d} with the parameters in the Fit row"
+    except Exception as e:
+        model_label, model_p = f"{find_proc_dd.value}: {e}", None
+    note = ("" if cond or not _is_external() else
+            "Nothing narrows the data yet: add a filter or pick one group to condition on it.")
+    prob_out.value = (probability_table_html(event_text(col, op, a, b), cond, res, model_label, model_p, note)
+                      + _data_context())
+
+prob_btn.on_click(_on_prob)
+
+def _update_prob_formula(*_):
+    col = (col_dd.value or "k") if _is_external() else "k"
+    try:
+        ev = event_text(col, prob_op.value, float(prob_v1.value), float(prob_v2.value))
+    except Exception:
+        return
+    prob_formula.value = formula_html(ev, _condition_text())
+    name = html.escape(str(col_dd.value)) if (_is_external() and col_dd.value) else "the simulated sample"
+    prob_label.value = f"<b style='white-space:nowrap'>Event on {name}:</b>"
+
+# every filter change re-renders filter_list, so watching its children follows add/toggle/remove/clear
+for _w, _trait in ((prob_op, "value"), (prob_v1, "value"), (prob_v2, "value"), (col_dd, "value"),
+                   (group_col, "value"), (group_val, "value"), (mode_dd, "value"), (filter_list, "children")):
+    _w.observe(_update_prob_formula, names=_trait)
+_update_prob_formula()
 viz_grid.observe(_on_grid_toggle, names="value")
 
 def _sep(label):
@@ -1170,7 +1290,8 @@ filter_row2  = widgets.HBox([filter_clear, filter_state])
 clean_row    = widgets.HBox([widgets.HTML("<b style='white-space:nowrap'>Clean:</b>", layout=widgets.Layout(width="58px")),
                              clean_dropna, clean_nozero, clean_dedup, clean_trim, trim_lo, trim_hi])
 group_row    = widgets.HBox([group_col, group_val])
-filter_panel = widgets.VBox([filter_row1, filter_list, filter_row2, clean_row, group_row])
+filter_panel = widgets.VBox([_sep("Filter · Clean · Group"),   # inside the panel, so it hides with it
+                             filter_row1, filter_list, filter_row2, clean_row, group_row])
 filter_panel.layout.display = "none"
 
 def _on_mode_change(change=None):
@@ -1204,10 +1325,15 @@ viz_row = widgets.HBox([widgets.HTML("<b style='white-space:nowrap'>Visualize:</
                        layout=widgets.Layout(flex_flow="row wrap"))   # wrap, or narrow notebooks clip the end
 
 results_tabs = widgets.Tab(children=[out, widgets.VBox([find_status, find_out]),
-                                     widgets.VBox([viz_status, viz_out])])
+                                     widgets.VBox([viz_status, viz_out]), prob_out])
 results_tabs.set_title(0, "All-distribution results")   # filled by Fit All
 results_tabs.set_title(1, "Single-distribution results")  # filled by Fit
 results_tabs.set_title(2, "Data view")                    # filled by the Visualize buttons
+results_tabs.set_title(3, "Probability")                  # filled by P(event | filters)
+
+prob_row = widgets.HBox([prob_label,
+                         prob_op, prob_v1, prob_v2, prob_btn],
+                        layout=widgets.Layout(flex_flow="row wrap", align_items="center"))
 
 ui = widgets.VBox([
     _tab_css,                 # widen the result tab headers
@@ -1223,6 +1349,9 @@ ui = widgets.VBox([
     controls,
     _sep("Visualize data"),
     viz_row,                  # plots of the data itself
+    _sep("Conditional probability"),
+    prob_row,                 # P(event | filters and group)
+    prob_formula,             # live formula for the current settings
     _sep("Results"),
     status_html,
     results_tabs,

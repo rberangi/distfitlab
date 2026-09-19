@@ -87,13 +87,16 @@ A ready notebook is in [`examples/quickstart.ipynb`](https://github.com/rberangi
 - **Fit All** fits every distribution and ranks them best-first by the largest gap
   between the empirical and theoretical CDF, with the parameters and AIC/BIC for each.
 - **Fit** scores one distribution against parameters you type, with CDF/PDF overlays.
-- **Data view** — histogram (or counts bar chart), ECDF, box plot, Q-Q plot against the
-  distribution you chose, run chart and sorted run chart with a pan/zoom toolbar, and
-  summary statistics.
+- **Data view** — histogram, ECDF, empirical PDF (counts: empirical PMF), box plot, Q-Q plot
+  against the distribution you chose, run chart and sorted run chart, and summary statistics.
+  ECDF, PDF/PMF and the run charts have a pan/zoom toolbar and optional grid lines.
 - **File data** — CSV, TSV, Excel, JSON, Parquet, Feather, SPSS/Stata/SAS and HDF5; a
   stack of filter conditions across columns; cleaning (drop NaN, drop ≤ 0, percentile
   trim, drop duplicates); and **Group by**, which fits every group and ranks them.
 - **loc = 0** option, for when a distribution should be anchored at the origin.
+- **Conditional probability** — P(event | filters) for an event on the Use column, e.g.
+  P(count > 500 | season == summer), with its all-rows baseline, the ratio, Bayes' reverse
+  P(condition | event), and the model's value.
 - **Save results** writes the table, the samples and the figures to a timestamped folder.
 
 ## Requirements

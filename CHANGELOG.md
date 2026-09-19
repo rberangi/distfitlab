@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.4.0 — 2026-09-19
+
+- **Conditional probability** in both apps: set an event on the Use column (`<=`, `<`, `>`, `>=`,
+  `between`, `==`) and click **P(event | filters)**. The new **Probability** tab shows
+  P(event | the rows the filters and group keep) with a 95% Wilson interval, P(event) over all
+  rows, their ratio, P(condition | event) by Bayes' rule, and P(event) under the distribution
+  in the Fit row. A live formula box under the row spells out the probability the current
+  settings define, e.g. `P( count > 500 | season == winter and year == 1 )`. The calculations
+  live in a new shared module, `distfitlab.probability`. The row's label names the
+  Use column (*Event on count:*).
+- **PDF** button (empirical PDF) in the Continuous app's Data view: the histogram-based CDF on **CDF bins** bins,
+  differenced - the same curve Fit All's PDF overlay is compared against. Split by group works.
+- **PMF**: the Discrete app's "Counts bar chart" button is renamed PMF - it draws the empirical PMF.
+  Button tooltips say "empirical" and how each chart is computed; chart titles are unchanged.
+- **Zoom and grid** on ECDF, PDF and PMF, like the run charts: pan/zoom toolbar, and **grid lines** toggles the chart on screen.
+- **Run charts split by group**: with *split by <column>* ticked, the Run chart shows one panel per
+  group (shared axes, own mean line) and the Sorted run chart overlays the groups against
+  percentile rank, so groups of different sizes compare directly. Both stay zoomable.
+- **Group by is easier to follow**: the file panel has its own *Filter · Clean · Group* caption, and
+  the Visualize row's split checkbox names the column (*split by month*) and is disabled while
+  Group by is *(none)* or the data is simulated.
+- **Group order**: groups are listed in natural order everywhere - the Group dropdown, the
+  Data view charts and summary table, and grouped Fit All - so numeric groups such as month
+  run 1, 2, ..., 12 instead of 1, 10, 11, 12, 2, and text such as press-2 comes before press-10.
+
 ## 0.3.0 — 2026-09-14
 
 - **Fit All**: **AIC** and **BIC** columns in both apps, from the log-likelihood of each fit with

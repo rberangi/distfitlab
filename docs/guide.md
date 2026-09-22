@@ -15,7 +15,7 @@ UI convention: loc is always first.
 
 From file: upload a file or enter a local path, then choose a Column. Use the **Filter · Clean · Group** panel below it to stack filters, clean the column and group rows (all optional). Group by lives here, not under Visualize, because it changes what is fitted: with *(all groups)* Fit All fits every group, a picked group narrows every fit, chart and probability to its rows, and the Visualize row only uses it when you tick the split checkbox. The Distribution list, N and Seed are hidden in this mode, since they only apply to simulated data. CDF bins lives in the **Visualize data** block and stays visible in both modes, because it sets the empirical CDF that every fit is scored against, file data included.
 
-Reproducibility: for synthetic data, set Seed; for external data, “Fit” and “Fit All” share a cached empirical baseline so results match.
+Reproducibility: for synthetic data, set Seed; for external data, “Check my parameters” and “Fit All” share a cached empirical baseline so results match.
 
 2) Fit all distributions  (on-screen block: FIT ALL DISTRIBUTIONS)
 
@@ -33,9 +33,9 @@ View CDF/PDF overlays for the best fit.
 
 Inspect a bar chart of errors (labels printed vertically).
 
-3) Fit one distribution  (on-screen block: FIT ONE DISTRIBUTION)
+3) Check one distribution  (on-screen block: CHECK ONE DISTRIBUTION AGAINST YOUR PARAMETERS)
 
-Pick a distribution, enter parameters, and click Fit to:
+Pick a distribution, enter parameters, and click **Check my parameters** to:
 
 Compute the max CDF error against the same empirical baseline.
 
@@ -43,7 +43,7 @@ Display CDF and PDF overlays for those parameters.
 
 4) Visualize data  (on-screen block: VISUALIZE DATA, results in the Data view tab)
 
-The **Visualize** buttons draw the data you are about to fit - after filters, cleaning and group selection - into the **Data view** tab. **Q-Q plot** uses the distribution and parameters currently in the Fit row, so it answers "do my parameters match this data?" before you fit. **PDF** (Continuous app) draws the empirical density exactly the way Fit All builds it: an empirical CDF on **CDF bins** equal-width bins, differenced into a density - so it is the curve every PDF overlay is compared against. **PMF** (Discrete app) draws the empirical PMF: the share of rows at each count. Every button in this row plots the data, so the chart titles say "Empirical". **Run chart** plots values in row order, which shows drift or steps that a histogram hides. **Sorted run chart** plots the same values in ascending order against their rank, with mean and median lines, so the range, gaps, ties and outliers stand out; like the run chart it has a pan/zoom toolbar. ECDF, PDF, PMF and both run charts are zoomable, with a pan/zoom toolbar. Tick **grid lines** to add a light grid to them; it applies to the chart already on screen, keeping the current zoom. With a **Group by** column set, tick **split by <column>** - the checkbox names the Group by column, e.g. *split by month*, and is greyed out while Group by is *(none)* - to draw one series per group (up to 10). The **Run chart** then becomes one panel per group, stacked with shared axes and each with its own mean line, because noisy series drawn on top of each other hide one another. The **Sorted run chart** overlays the groups against *percentile rank within group* (0-100%), so groups of different sizes line up, with each group's mean and median in the legend.
+The **Visualize** buttons draw the data you are about to fit - after filters, cleaning and group selection - into the **Data view** tab. **Q-Q plot** uses the distribution and parameters currently in the “Check my parameters” row, so it answers "do my parameters match this data?" before you fit. **PDF** (Continuous app) draws the empirical density exactly the way Fit All builds it: an empirical CDF on **CDF bins** equal-width bins, differenced into a density - so it is the curve every PDF overlay is compared against. **PMF** (Discrete app) draws the empirical PMF: the share of rows at each count. Every button in this row plots the data, so the chart titles say "Empirical". **Run chart** plots values in row order, which shows drift or steps that a histogram hides. **Sorted run chart** plots the same values in ascending order against their rank, with mean and median lines, so the range, gaps, ties and outliers stand out; like the run chart it has a pan/zoom toolbar. ECDF, PDF, PMF and both run charts are zoomable, with a pan/zoom toolbar. Tick **grid lines** to add a light grid to them; it applies to the chart already on screen, keeping the current zoom. With a **Group by** column set, tick **split by <column>** - the checkbox names the Group by column, e.g. *split by month*, and is greyed out while Group by is *(none)* - to draw one series per group (up to 10). The **Run chart** then becomes one panel per group, stacked with shared axes and each with its own mean line, because noisy series drawn on top of each other hide one another. The **Sorted run chart** overlays the groups against *percentile rank within group* (0-100%), so groups of different sizes line up, with each group's mean and median in the legend.
 
 5) Conditional probability  (on-screen block: CONDITIONAL PROBABILITY, results in the Probability tab)
 
@@ -51,9 +51,10 @@ Set an event on the Use column - `<=`, `<`, `>`, `>=`, `between` (two bounds, bo
 
 - **P(E | condition)**: the share of kept rows where the event holds, with the counts and a 95% Wilson interval.
 - **P(E) over all rows**: the same share with no filters and no group, for comparison.
+- **P(condition)**: the share of all rows the condition keeps. It is the term Bayes' rule needs, so P(condition | E) × P(E) = P(E | condition) × P(condition) can be read straight off the table. It is left out while **trim percentiles** is on, for the same reason as P(condition | E).
 - **Ratio**: P(E | condition) / P(E). Above 1, the condition makes the event more likely.
 - **P(condition | E)**: of the rows where the event holds, the share the condition keeps (Bayes' rule). It is left out while **trim percentiles** is on, because trimming runs separately on the kept rows and on all rows.
-- **P(E) under the model**: the event's probability under the distribution and parameters in the Fit row - set them to a fitted result first. For counts, strict and non-strict bounds differ (P(X < 5) excludes 5); for a continuous distribution they coincide and P(X == a) is 0.
+- **P(E) under the model**: the event's probability under the distribution and parameters in the “Check my parameters” row - set them to a fitted result first. This row is tinted the same cyan as that button, to show where its numbers come from. For counts, strict and non-strict bounds differ (P(X < 5) excludes 5); for a continuous distribution they coincide and P(X == a) is 0.
 
 With no filter and no single group selected there is nothing to condition on, so the tab shows P(E) for the data and the model only.
 
@@ -79,7 +80,7 @@ Exponential
 
 Simulated input uses scale (Distribution → Exponential has “scale”).
 
-Fit expects λ (rate); it’s clearly labeled as “λ (rate)”.
+The parameter box expects λ (rate); it’s clearly labeled as “λ (rate)”.
 
 Internally we convert rate ↔ scale as needed.
 
@@ -115,7 +116,7 @@ Install the indicated package (see Quick start).
 No numeric data in selected column
 Choose a different column or clean/filter data first. The app coerces to numeric and drops non-numeric rows for modeling.
 
-Fit vs Fit All mismatch
+“Check my parameters” vs Fit All mismatch
 
 Ensure you didn’t change bins, filter, or seed between actions.
 
@@ -140,11 +141,11 @@ Computes max absolute deviation between empirical CDF and theoretical CDF.
 
 Builds a table (with loc in Parameter 1 where applicable).
 
-A small cache ensures the empirical baseline used in Fit All is reused by Fit.
+A small cache ensures the empirical baseline used in Fit All is reused by “Check my parameters”.
 
 Notes & tips
 
-CDF bins (in the **Visualize data** block): affects empirical CDF/PDF smoothness and the histogram detail; 50–200 is a sensible range. It also sets the empirical curve that Fit and Fit All are scored against, for file data as well as simulated data.
+CDF bins (in the **Visualize data** block): affects empirical CDF/PDF smoothness and the histogram detail; 50–200 is a sensible range. It also sets the empirical curve that “Check my parameters” and Fit All are scored against, for file data as well as simulated data.
 
 Scale/shape positivity: the UI enforces positive values for these parameters.
 

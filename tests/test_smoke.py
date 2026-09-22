@@ -177,7 +177,11 @@ def test_wilson_interval_and_conditional_summary():
     assert (r["k"], r["n"], r["k_all"], r["n_all"]) == (10, 50, 10, 100)
     assert np.isclose(r["p"], 0.2) and np.isclose(r["p_all"], 0.1) and np.isclose(r["ratio"], 2.0)
     assert np.isclose(r["p_cond_given_e"], 1.0)                     # every value > 90 is in the condition
-    assert np.isnan(conditional_summary(x_cond, x_all, ">", 90, subset=False)["p_cond_given_e"])
+    assert np.isclose(r["p_cond"], 0.5)                             # the condition keeps 50 of 100 rows
+    # Bayes' rule closes exactly on the plug-in counts
+    assert np.isclose(r["p_cond_given_e"] * r["p_all"], r["p"] * r["p_cond"])
+    r_trim = conditional_summary(x_cond, x_all, ">", 90, subset=False)
+    assert np.isnan(r_trim["p_cond_given_e"]) and np.isnan(r_trim["p_cond"])
 
 
 def test_conditional_probability_button_in_both_apps():

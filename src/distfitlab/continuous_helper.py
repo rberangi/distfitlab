@@ -9,7 +9,7 @@ from IPython import get_ipython
 
 from .file_readers import read_uploaded_dataframe as _read_uploaded_dataframe
 from .grouping import groups_in_order, values_in_order
-from .probability import (EVENT_OPS, event_text, model_probability, conditional_summary,
+from .probability import (FIT_COLOR, FIT_LABEL, EVENT_OPS, event_text, model_probability, conditional_summary,
                           probability_table_html, formula_html)
 
 # ---------------- Core helpers ----------------
@@ -500,10 +500,12 @@ p2_in  = widgets.FloatText(value=1.0, layout=widgets.Layout(width="120px"))
 p3_in  = widgets.FloatText(value=0.0, layout=widgets.Layout(width="120px"), disabled=True)
 p4_in  = widgets.FloatText(value=0.0, layout=widgets.Layout(width="120px"), disabled=True)
 # flex "0 0 auto": never shrink below its label; buttons clip overflowing text
-find_btn       = widgets.Button(description="Fit", icon="play", button_style="primary", layout=widgets.Layout(width="auto", flex="0 0 auto"))
+find_btn       = widgets.Button(description=FIT_LABEL, icon="play", tooltip="Score the distribution and parameters you typed against the data - this does not fit anything for you",
+                               layout=widgets.Layout(width="auto", flex="0 0 auto"))
+find_btn.style.button_color = FIT_COLOR   # same cyan as the model row in the Probability tab
 find_status    = widgets.HTML("")
 find_out       = widgets.Output()
-# Shown only while Exponential is selected in the Fit row (toggled in _update_find_labels)
+# Shown only while Exponential is selected in the "Check my parameters" row (toggled in _update_find_labels)
 exp_note = widgets.HTML("<em>Exponential note: enter λ (rate); if you have scale s, use λ = 1/s.</em>")
 
 def _update_find_labels(*_):
@@ -1449,7 +1451,7 @@ def _viz_qq():
     _validate_proc_params(proc, p1, p2, p3, p4)
     params = _params_for_theory(proc, p1, p2, p3, p4)
     sets = _data_by_group()
-    _viz_start(f"Q-Q plot against <b>{proc}</b> with the parameters in the Fit row")
+    _viz_start(f"Q-Q plot against <b>{proc}</b> with the parameters in the \u201c{FIT_LABEL}\u201d row")
     with viz_out:
         clear_output()
         fig = plt.figure(num="viz_qq", clear=True); fig.set_size_inches(5.6, 5.4, forward=True)
@@ -1604,7 +1606,7 @@ def _on_prob(_=None):
         _validate_proc_params(proc, p1, p2, p3, p4)
         params = _params_for_theory(proc, p1, p2, p3, p4)
         model_p = model_probability(lambda t: theory_cdf(proc, params, t), op, a, b, discrete=False)
-        model_label = f"{proc} with the parameters in the Fit row"
+        model_label = f"{proc} with the parameters you typed in the \u201c{FIT_LABEL}\u201d row"
     except Exception as e:
         model_label, model_p = f"{proc}: {e}", None
     note = ("" if cond or not _is_external() else
@@ -1699,7 +1701,7 @@ _ui = widgets.VBox([
     upload_area,              # file mode only
     filter_panel,             # file mode only
     process_table,            # compact single-row param table
-    _sep("Fit one distribution"),
+    _sep("Check one distribution against your parameters"),
     find_row,
     exp_note,                 # only while Exponential is selected
     _sep("Fit all distributions"),

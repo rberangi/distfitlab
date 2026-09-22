@@ -65,7 +65,7 @@ main()                # opens on the continuous app
 1. **Data source** — simulate data, or choose **From file** to upload a file (or enter a
    path) and pick the column.
 2. **Fit All** — fit every distribution and get a table ranked best-first.
-3. **Fit** — try one distribution with parameters you type.
+3. **Check my parameters** — score one distribution against parameters you type.
 4. **Visualize data** — histogram, ECDF, box plot, Q-Q plot, run charts and summary stats.
 5. **Save results** — write the table and figures to an `outputs/` folder next to the
    notebook.
@@ -86,7 +86,8 @@ A ready notebook is in [`examples/quickstart.ipynb`](https://github.com/rberangi
 
 - **Fit All** fits every distribution and ranks them best-first by the largest gap
   between the empirical and theoretical CDF, with the parameters and AIC/BIC for each.
-- **Fit** scores one distribution against parameters you type, with CDF/PDF overlays.
+- **Check my parameters** scores one distribution against parameters you type, with CDF/PDF
+  overlays. It does not fit anything for you - it grades the numbers in the boxes.
 - **Data view** — histogram, ECDF, empirical PDF (counts: empirical PMF), box plot, Q-Q plot
   against the distribution you chose, run chart and sorted run chart, and summary statistics.
   ECDF, PDF/PMF and the run charts have a pan/zoom toolbar and optional grid lines.

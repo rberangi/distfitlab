@@ -9,7 +9,7 @@ from IPython import get_ipython
 
 from .file_readers import read_uploaded_dataframe as _read_uploaded_dataframe
 from .grouping import groups_in_order, values_in_order
-from .probability import (EVENT_OPS, event_text, model_probability, conditional_summary,
+from .probability import (FIT_COLOR, FIT_LABEL, EVENT_OPS, event_text, model_probability, conditional_summary,
                           probability_table_html, formula_html)
 
 plt.rcParams["figure.dpi"] = 120
@@ -560,7 +560,9 @@ save_btn = widgets.Button(description="Save results", icon="download", disabled=
 # Buttons
 fit_all_btn = widgets.Button(description="Fit All", icon="play", button_style="primary", layout=widgets.Layout(width="120px"))
 # flex "0 0 auto": never shrink below its label; buttons clip overflowing text
-find_btn    = widgets.Button(description="Fit", icon="play", button_style="primary", layout=widgets.Layout(width="auto", flex="0 0 auto"))
+find_btn    = widgets.Button(description=FIT_LABEL, icon="play", tooltip="Score the distribution and parameters you typed against the data - this does not fit anything for you",
+                            layout=widgets.Layout(width="auto", flex="0 0 auto"))
+find_btn.style.button_color = FIT_COLOR   # same cyan as the model row in the Probability tab
 
 # Right-aligned labels
 def lbl(text): return widgets.HTML(f"<div style='text-align:right; white-space:nowrap; padding-right:6px;'>{text}</div>")
@@ -816,7 +818,7 @@ def _run_fit_all(_=None):
 fit_all_btn.on_click(_run_fit_all)
 
 def _fit_row_pars():
-    """(distribution, parameters) from the Fit row, clamped into each parameter's valid range."""
+    """(distribution, parameters) from the "Check my parameters" row, clamped into each parameter's valid range."""
     d = find_proc_dd.value
     p1 = float(p1_in.value)
     p2 = float(p2_in.value)
@@ -1237,7 +1239,7 @@ def _on_prob(_=None):
     try:
         d, pars = _fit_row_pars()
         model_p = model_probability(lambda t: theory_cdf(d, pars, t), op, a, b, discrete=True)
-        model_label = f"{d} with the parameters in the Fit row"
+        model_label = f"{d} with the parameters you typed in the \u201c{FIT_LABEL}\u201d row"
     except Exception as e:
         model_label, model_p = f"{find_proc_dd.value}: {e}", None
     note = ("" if cond or not _is_external() else
@@ -1343,7 +1345,7 @@ ui = widgets.VBox([
     process_table,
     upload_area,              # file mode only
     filter_panel,             # file mode only
-    _sep("Fit one distribution"),
+    _sep("Check one distribution against your parameters"),
     find_row,
     _sep("Fit all distributions"),
     controls,

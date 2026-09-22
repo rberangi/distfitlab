@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0 — 2026-09-22
+
+- **P(condition) is now its own row** in the Probability tab, so Bayes' rule can be read straight
+  off the table: P(condition | E) x P(E) = P(E | condition) x P(condition). Its value is the share
+  of all rows the condition keeps; previously the two counts were only available inside the
+  "Based on" text. Like P(condition | E) it is left out while **trim percentiles** is on, because
+  the kept rows are then not a subset of all rows.
+- **"Fit" is renamed "Check my parameters"** in both apps. The button never fitted anything - it
+  scores the distribution and parameters *you* typed against the data - so the old name suggested
+  it would fill the boxes for you. The block above it is now
+  *Check one distribution against your parameters*, and it carries a tooltip saying what it does.
+  **Fit All**, which really does fit, is unchanged.
+- **The model row is colour-coded to that button**: *P(E) under the model* is tinted the same cyan,
+  because it is the one row computed from the parameter boxes rather than from your rows. The
+  colour and the button label are single constants (`FIT_COLOR`, `FIT_LABEL`) in
+  `distfitlab.probability`, shared by both apps so they cannot drift apart.
+
 ## 0.4.0 — 2026-09-19
 
 - **Conditional probability** in both apps: set an event on the Use column (`<=`, `<`, `>`, `>=`,

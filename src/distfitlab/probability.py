@@ -5,14 +5,25 @@ an HTML string out - no widgets and no app state.
 
     P(E | condition)   share of the kept rows where the event holds, with a Wilson 95% interval
     P(E)               the same share over every row, for comparison
+    P(condition)       share of all rows the condition keeps - the missing term in Bayes' rule
     P(condition | E)   of the rows where the event holds, the share the condition keeps (Bayes)
     model P(E)         the event's probability under a fitted distribution
+
+All four data quantities are plug-in counts on the same rows, so Bayes' rule closes exactly:
+P(condition | E) P(E) = P(E | condition) P(condition) = k / N. That holds only while the kept
+rows are a subset of all rows, which is what `subset` records.
 """
 import html
 import math
 import numpy as np
 
 EVENT_OPS = ("<=", "<", ">", ">=", "between", "==")
+
+# The model row and the button that sets the parameters it reads share one cyan, so the table
+# points back at the control that produced the number. Both apps import these.
+FIT_COLOR = "#0097A7"        # cyan 700 - dark enough for white button text
+FIT_TINT  = "#e0f7fa"        # the same cyan, washed out, for the rest of the model row
+FIT_LABEL = "Check my parameters"   # the button's description, referred to in the model row's note
 
 
 def event_mask(x, op, a, b=None):
@@ -89,17 +100,19 @@ def conditional_summary(x_cond, x_all, op, a, b=None, subset=True):
     `x_all` is None when nothing narrows the data (no filter, no single group): there is no
     condition to compare against. `subset` says whether the kept rows are a subset of all
     rows after cleaning - False when percentile trimming ran separately on each - and only
-    then is P(condition | E) reported.
+    then are P(condition) and P(condition | E) reported.
     """
     m = event_mask(x_cond, op, a, b)
     k, n = int(m.sum()), int(m.size)
     res = {"k": k, "n": n, "p": k / n if n else math.nan, "ci": wilson_interval(k, n),
-           "k_all": None, "n_all": None, "p_all": None, "ratio": None, "p_cond_given_e": None}
+           "k_all": None, "n_all": None, "p_all": None, "ratio": None,
+           "p_cond": None, "p_cond_given_e": None}
     if x_all is not None:
         ma = event_mask(x_all, op, a, b)
         K, N = int(ma.sum()), int(ma.size)
         res.update(k_all=K, n_all=N, p_all=K / N if N else math.nan)
         res["ratio"] = res["p"] / res["p_all"] if res["p_all"] else math.nan
+        res["p_cond"] = (n / N) if (subset and N) else math.nan
         res["p_cond_given_e"] = (k / K) if (subset and K) else math.nan
     return res
 
@@ -112,12 +125,17 @@ def probability_table_html(event, condition, res, model_label=None, model_p=None
     """The result as a small HTML table, styled like the apps' other result tables."""
     esc = lambda t: html.escape(str(t))
     cond = condition or "none"
-    rows = []
+    rows = []          # (quantity, value, based-on, row css class)
     lo, hi = res["ci"]
     if res["n_all"] is not None:
         rows.append((f"P(E | condition)", _p(res["p"]),
                      f"{res['k']:,} of {res['n']:,} kept rows · 95% interval {_p(lo)}–{_p(hi)}"))
         rows.append(("P(E) over all rows", _p(res["p_all"]), f"{res['k_all']:,} of {res['n_all']:,} rows"))
+        pc = res.get("p_cond")
+        pc = math.nan if pc is None else pc
+        rows.append(("P(condition)", _p(pc),
+                     f"{res['n']:,} of {res['n_all']:,} rows kept by the condition" if not math.isnan(pc)
+                     else "not shown while trim percentiles is on: kept rows are no longer a subset"))
         ratio = res["ratio"]
         rows.append(("Ratio P(E | condition) / P(E)",
                      "—" if ratio is None or math.isnan(ratio) else f"{ratio:.2f}×",
@@ -130,8 +148,10 @@ def probability_table_html(event, condition, res, model_label=None, model_p=None
         rows.append(("P(E)", _p(res["p"]),
                      f"{res['k']:,} of {res['n']:,} rows · 95% interval {_p(lo)}–{_p(hi)}"))
     if model_label:
-        rows.append(("P(E) under the model", _p(model_p), model_label))
-    body = "".join(f"<tr><td>{esc(q)}</td><td class='pv'>{esc(v)}</td><td>{esc(d)}</td></tr>" for q, v, d in rows)
+        rows.append(("P(E) under the model", _p(model_p), model_label, "model-row"))
+    body = "".join(f"<tr class='{r[3] if len(r) > 3 else ''}'>"
+                   f"<td>{esc(r[0])}</td><td class='pv'>{esc(r[1])}</td><td>{esc(r[2])}</td></tr>"
+                   for r in rows)
     title = (f"P( {esc(event)} | {esc(cond)} )" if res["n_all"] is not None else f"P( {esc(event)} )")
     style = """<style>
     .cond-prob { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 14px; min-width: 60%; }
@@ -139,6 +159,10 @@ def probability_table_html(event, condition, res, model_label=None, model_p=None
     .cond-prob td { border:1px solid #ddd; padding:7px 10px; }
     .cond-prob tr:nth-child(even) { background:#f6f6f6; }
     .cond-prob td.pv { font-weight:bold; text-align:right; font-variant-numeric: tabular-nums; }
+    /* the model row carries the cyan of the button that sets the parameters it reads */
+    .cond-prob tr.model-row td { background:""" + FIT_TINT + """; }
+    .cond-prob tr.model-row td:first-child { background:""" + FIT_COLOR + """; color:#fff; font-weight:bold; }
+    .cond-prob tr.model-row td.pv { color:""" + FIT_COLOR + """; }
     </style>"""
     extra = f"<div style='color:#555; margin-top:6px;'>{esc(note)}</div>" if note else ""
     return (style + f"<h4 style='margin:4px 0 8px 0;'>{title}</h4>"
